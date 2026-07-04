@@ -23,15 +23,20 @@ export function getRedis(): Redis | null {
     return null;
   }
 
-  client = new Redis(url, {
-    maxRetriesPerRequest: 3,
-    // Upstash and most managed Redis require TLS on rediss:// URLs; ioredis infers it from the scheme.
-    lazyConnect: false,
-    retryStrategy: (times) => Math.min(times * 500, 5000),
-  });
-
-  client.on('connect', () => logger.info('Redis connected'));
-  client.on('error', (err) => logger.error('Redis error:', { message: err.message }));
+  try {
+    client = new Redis(url, {
+      maxRetriesPerRequest: 3,
+      // Upstash and most managed Redis require TLS on rediss:// URLs; ioredis infers it from the scheme.
+      lazyConnect: false,
+      retryStrategy: (times) => Math.min(times * 500, 5000),
+    });
+    client.on('connect', () => logger.info('Redis connected'));
+    client.on('error', (err) => logger.error('Redis error:', { message: err.message }));
+  } catch (err) {
+    // A malformed REDIS_URL must never crash boot — degrade to the in-memory fallbacks.
+    logger.error('Invalid REDIS_URL — continuing without Redis:', { message: (err as Error).message });
+    client = null;
+  }
 
   return client;
 }
@@ -40,17 +45,22 @@ export function getRedis(): Redis | null {
 export function createBlockingRedis(): Redis | null {
   const url = process.env.REDIS_URL;
   if (!url) return null;
-  const conn = new Redis(url, { maxRetriesPerRequest: null, retryStrategy: (t) => Math.min(t * 500, 5000) });
-  // Without a listener, ioredis logs "Unhandled error event" on every reconnect attempt.
-  let reported = false;
-  conn.on('error', (err) => {
-    if (!reported) {
-      logger.error('Redis (consumer) error:', { message: err.message });
-      reported = true;
-    }
-  });
-  conn.on('connect', () => { reported = false; });
-  return conn;
+  try {
+    const conn = new Redis(url, { maxRetriesPerRequest: null, retryStrategy: (t) => Math.min(t * 500, 5000) });
+    // Without a listener, ioredis logs "Unhandled error event" on every reconnect attempt.
+    let reported = false;
+    conn.on('error', (err) => {
+      if (!reported) {
+        logger.error('Redis (consumer) error:', { message: err.message });
+        reported = true;
+      }
+    });
+    conn.on('connect', () => { reported = false; });
+    return conn;
+  } catch (err) {
+    logger.error('Invalid REDIS_URL (consumer) — continuing without Redis:', { message: (err as Error).message });
+    return null;
+  }
 }
 
 export async function closeRedis(): Promise<void> {
