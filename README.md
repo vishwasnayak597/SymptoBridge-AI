@@ -1,4 +1,4 @@
-# aiDoc - AI-Powered Healthcare Platform
+# SymptoBridge AI — From Symptoms to the Right Specialist
 
 A comprehensive healthcare platform with AI-powered symptom checking, doctor appointments, and telemedicine capabilities.
 

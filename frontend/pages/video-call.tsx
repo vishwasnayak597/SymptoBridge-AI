@@ -33,7 +33,7 @@ const VideoCallPage: React.FC = () => {
   return (
     <ProtectedRoute allowedRoles={['doctor', 'patient']}>
       <Head>
-        <title>Video Call - aiDoc</title>
+        <title>Video Call - SymptoBridge AI</title>
       </Head>
 
       {appointmentId && user ? (

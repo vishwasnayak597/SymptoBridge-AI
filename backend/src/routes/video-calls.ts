@@ -217,7 +217,7 @@ router.post('/end-active', [authenticate], async (req: Request, res: Response) =
     // End the video call by clearing the video call fields
     await Appointment.findByIdAndUpdate(
       activeCall._id,
-      { 
+      {
         $unset: {
           videoCallId: "",
           videoCallUrl: ""
@@ -227,11 +227,16 @@ router.post('/end-active', [authenticate], async (req: Request, res: Response) =
       }
     );
 
-    
-    res.json({ 
-      success: true, 
+    // Dismiss the patient's "incoming call" banner immediately (poll clears it otherwise, up to 15s later)
+    const { SocketService } = await import('../services/SocketService');
+    SocketService.emitToUser(activeCall.patient.toString(), 'call:ended', {
+      appointmentId: activeCall._id.toString(),
+    });
+
+    res.json({
+      success: true,
       data: { appointmentId: activeCall._id },
-      message: 'Active video call ended successfully' 
+      message: 'Active video call ended successfully'
     });
   } catch (error) {
     console.error('Error ending active video call:', error);

@@ -150,9 +150,9 @@ const HomePage: React.FC = () => {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-2">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">a</span>
+                  <span className="text-white font-bold text-xl">S</span>
                 </div>
-                <span className="text-2xl font-bold gradient-text">aiDoc</span>
+                <span className="text-2xl font-bold gradient-text">SymptoBridge</span>
               </div>
               <button
                 onClick={() => setAuthMode('home')}
@@ -479,10 +479,10 @@ const HomePage: React.FC = () => {
   return (
     <>
       <Head>
-        <title>AIDOC - AI-Powered Healthcare Platform</title>
+        <title>SymptoBridge AI — From Symptoms to the Right Specialist</title>
         <meta
           name="description"
-          content="AIDOC - AI-Powered Healthcare Platform. Connect with doctors, get AI-powered symptom analysis, and manage your healthcare journey all in one place."
+          content="SymptoBridge AI — From Symptoms to the Right Specialist. Connect with doctors, get AI-powered symptom analysis, and manage your healthcare journey all in one place."
         />
       </Head>
 
@@ -496,7 +496,7 @@ const HomePage: React.FC = () => {
                   <span className="text-white font-bold text-lg">A</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold gradient-text">AIDOC</span>
+                  <span className="text-xl font-bold gradient-text">SymptoBridge</span>
                   <span className="text-xs text-gray-600 -mt-1">AI-Powered Healthcare</span>
                 </div>
               </div>
@@ -527,7 +527,7 @@ const HomePage: React.FC = () => {
                 <div className="mb-4">
                   <div className="text-lg font-semibold text-blue-200 mb-2">Welcome to</div>
                   <h1 className="text-4xl md:text-6xl font-bold mb-2 leading-tight">
-                    AIDOC
+                    SymptoBridge AI
                   </h1>
                   <p className="text-xl md:text-2xl font-medium text-blue-100 mb-6">
                     AI-Powered Healthcare Platform
@@ -576,7 +576,7 @@ const HomePage: React.FC = () => {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="text-center mb-16 animate-fade-in">
                 <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-                  Why Choose aiDoc?
+                  Why Choose SymptoBridge?
                 </h2>
                 <p className="text-xl text-gray-600 max-w-2xl mx-auto">
                   Experience healthcare like never before with our AI-powered platform
@@ -712,9 +712,9 @@ const HomePage: React.FC = () => {
               <div>
                 <div className="flex items-center space-x-2 mb-4">
                   <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                    <span className="text-white font-bold text-lg">a</span>
+                    <span className="text-white font-bold text-lg">S</span>
                   </div>
-                  <span className="text-xl font-bold text-blue-400">aiDoc</span>
+                  <span className="text-xl font-bold text-blue-400">SymptoBridge</span>
                 </div>
                 <p className="text-gray-400 leading-relaxed">
                   AI-powered healthcare platform connecting patients with verified doctors for better health outcomes.
@@ -753,7 +753,7 @@ const HomePage: React.FC = () => {
             </div>
             
             <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-              <p>&copy; 2024 AIDOC. All rights reserved. Made with ❤️ for better healthcare.</p>
+              <p>&copy; 2026 SymptoBridge AI. All rights reserved. Made with ❤️ for better healthcare.</p>
             </div>
           </div>
         </footer>

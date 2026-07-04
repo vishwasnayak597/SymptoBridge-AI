@@ -11,6 +11,7 @@ export interface IUserDocument extends Document {
   password: string;
   firstName: string;
   lastName: string;
+  fullName?: string; // virtual
   phone?: string;
   avatar?: string;
   role: 'patient' | 'doctor' | 'admin';
@@ -198,6 +199,7 @@ const UserSchema = new Schema<IUserDocument>({
 }, {
   timestamps: true,
   toJSON: {
+    virtuals: true,
     transform: function(doc, ret) {
       delete ret.password;
       delete ret.refreshTokens;
@@ -207,7 +209,13 @@ const UserSchema = new Schema<IUserDocument>({
       delete ret.lockUntil;
       return ret;
     }
-  }
+  },
+  toObject: { virtuals: true }
+});
+
+// Convenience virtual used across notifications ("Dr. {fullName}", "received from {fullName}").
+UserSchema.virtual('fullName').get(function (this: IUserDocument) {
+  return `${this.firstName || ''} ${this.lastName || ''}`.trim();
 });
 
 /**

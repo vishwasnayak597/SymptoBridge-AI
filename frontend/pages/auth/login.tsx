@@ -112,8 +112,8 @@ const LoginPage: React.FC = () => {
   return (
     <>
       <Head>
-        <title>Sign In - aiDoc</title>
-        <meta name="description" content="Sign in to your aiDoc account" />
+        <title>Sign In - SymptoBridge AI</title>
+        <meta name="description" content="Sign in to your SymptoBridge AI account" />
       </Head>
 
       <div className="auth-container animate-fade-in">
@@ -123,9 +123,9 @@ const LoginPage: React.FC = () => {
             <div className="auth-logo">
               <div className="flex items-center space-x-2">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">a</span>
+                  <span className="text-white font-bold text-xl">S</span>
                 </div>
-                <span className="text-2xl font-bold gradient-text">aiDoc</span>
+                <span className="text-2xl font-bold gradient-text">SymptoBridge</span>
               </div>
             </div>
             <h2 className="auth-title">Welcome back</h2>
@@ -225,7 +225,7 @@ const LoginPage: React.FC = () => {
                 <div className="w-full border-t border-gray-200" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">New to aiDoc?</span>
+                <span className="px-2 bg-white text-gray-500">New to SymptoBridge?</span>
               </div>
             </div>
 

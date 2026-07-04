@@ -1,7 +1,7 @@
 {
   "name": "aidoc",
   "version": "1.0.0",
-  "description": "AI-powered doctor appointment and symptom checker web application",
+  "description": "SymptoBridge AI - from symptoms to the right specialist",
   "private": true,
   "workspaces": [
     "frontend",

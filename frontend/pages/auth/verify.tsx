@@ -95,7 +95,7 @@ const VerifyPage: React.FC = () => {
   return (
     <>
       <Head>
-        <title>Email Verification - aiDoc</title>
+        <title>Email Verification - SymptoBridge AI</title>
         <meta name="description" content="Verifying your email address" />
       </Head>
 

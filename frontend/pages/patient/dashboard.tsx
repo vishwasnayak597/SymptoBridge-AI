@@ -555,9 +555,19 @@ const PatientDashboard: React.FC = () => {
       }, 5 * 60 * 1000);
     };
 
+    const onCallEnded = () => {
+      if (videoCallTimeoutRef.current) {
+        clearTimeout(videoCallTimeoutRef.current);
+        videoCallTimeoutRef.current = null;
+      }
+      setActiveVideoCallInvitation(null);
+    };
+
     socket.on('call:ring', onRing);
+    socket.on('call:ended', onCallEnded);
     return () => {
       socket.off('call:ring', onRing);
+      socket.off('call:ended', onCallEnded);
     };
   }, [user]);
 
@@ -1699,7 +1709,7 @@ const PatientDashboard: React.FC = () => {
   return (
     <ProtectedRoute allowedRoles={['patient']}>
       <Head>
-        <title>Patient Dashboard - aiDoc</title>
+        <title>Patient Dashboard - SymptoBridge AI</title>
         <meta name="description" content="AI-powered healthcare dashboard for patients" />
       </Head>
 
@@ -1713,10 +1723,10 @@ const PatientDashboard: React.FC = () => {
             <div className="flex justify-between items-center py-4">
               <div className="flex items-center space-x-4">
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">a</span>
+                  <span className="text-white font-bold text-lg">S</span>
                 </div>
                 <div>
-                  <span className="text-xl font-bold gradient-text">aiDoc</span>
+                  <span className="text-xl font-bold gradient-text">SymptoBridge</span>
                   <span className="text-sm text-gray-600 ml-2">Patient Portal</span>
                 </div>
               </div>

@@ -19,6 +19,7 @@ interface PaymentProcessorProps {
   doctorId: string;
   amount: number;
   currency?: string;
+  consultationType?: string; // cash/pay-at-clinic is only offered for in-person visits
   onPaymentSuccess: (paymentId: string) => void;
   onPaymentFailure: (error: string) => void;
   onCancel: () => void;
@@ -27,8 +28,8 @@ interface PaymentProcessorProps {
 interface PaymentMethod {
   id: string;
   name: string;
-  type: 'credit_card' | 'debit_card' | 'upi' | 'wallet' | 'net_banking' | 'cash';
-  gateway: 'stripe' | 'razorpay' | 'paypal' | 'cash';
+  type: 'credit_card' | 'upi' | 'cash';
+  gateway: 'stripe' | 'razorpay' | 'cash';
   icon: React.ComponentType<any>;
   description: string;
   processingTime: string;
@@ -47,6 +48,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
   doctorId,
   amount,
   currency = 'INR',
+  consultationType,
   onPaymentSuccess,
   onPaymentFailure,
   onCancel
@@ -59,6 +61,8 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCardForm, setShowCardForm] = useState(false);
+  const [showUpiForm, setShowUpiForm] = useState(false);
+  const [upiId, setUpiId] = useState('');
   const [cardDetails, setCardDetails] = useState({
     cardNumber: '',
     expiryDate: '',
@@ -87,46 +91,17 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       processingTime: 'Instant',
       fees: 0
     },
-    {
-      id: 'razorpay_wallet',
-      name: 'Digital Wallet',
-      type: 'wallet',
-      gateway: 'razorpay',
-      icon: WalletIcon,
-      description: 'Paytm, Amazon Pay, Mobikwik',
-      processingTime: 'Instant',
-      fees: 1.5
-    },
-    {
-      id: 'razorpay_netbanking',
-      name: 'Net Banking',
-      type: 'net_banking',
-      gateway: 'razorpay',
-      icon: BuildingLibraryIcon,
-      description: 'All major banks supported',
-      processingTime: '2-5 minutes',
-      fees: 1.2
-    },
-    {
-      id: 'paypal',
-      name: 'PayPal',
-      type: 'wallet',
-      gateway: 'paypal',
-      icon: WalletIcon,
-      description: 'PayPal account or card via PayPal',
-      processingTime: 'Instant',
-      fees: 3.4
-    },
-    {
+    // Cash is only meaningful for in-person visits (paid at the clinic).
+    ...(consultationType === 'in-person' ? [{
       id: 'cash',
-      name: 'Cash Payment',
-      type: 'cash',
-      gateway: 'cash',
+      name: 'Pay at Clinic',
+      type: 'cash' as const,
+      gateway: 'cash' as const,
       icon: BanknotesIcon,
-      description: 'Pay at clinic/hospital',
+      description: 'Pay by cash/card during your clinic visit',
       processingTime: 'During appointment',
       fees: 0
-    }
+    }] : [])
   ];
 
   const calculateTotalAmount = () => {
@@ -149,12 +124,16 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       message: `${method.name} selected. Click Pay Now to continue.`,
       timestamp: new Date()
     });
+    setShowCardForm(method.type === 'credit_card');
+    setShowUpiForm(method.type === 'upi');
+  };
 
-    if (method.type === 'credit_card' || method.type === 'debit_card') {
-      setShowCardForm(true);
-    } else {
-      setShowCardForm(false);
+  const validateUpiId = () => {
+    // Basic VPA shape: handle@bank
+    if (!/^[\w.\-]{2,}@[a-zA-Z]{2,}$/.test(upiId.trim())) {
+      return 'Please enter a valid UPI ID (e.g. name@okhdfc)';
     }
+    return null;
   };
 
   const validateCardDetails = () => {
@@ -182,11 +161,15 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
     if (showCardForm) {
       const validationError = validateCardDetails();
       if (validationError) {
-        setPaymentStatus({
-          status: 'failed',
-          message: validationError,
-          timestamp: new Date()
-        });
+        setPaymentStatus({ status: 'failed', message: validationError, timestamp: new Date() });
+        return;
+      }
+    }
+
+    if (showUpiForm) {
+      const validationError = validateUpiId();
+      if (validationError) {
+        setPaymentStatus({ status: 'failed', message: validationError, timestamp: new Date() });
         return;
       }
     }
@@ -235,11 +218,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
       } else if (selectedMethod.gateway === 'razorpay') {
         paymentDetails = {
           method: selectedMethod.type,
-          upiId: selectedMethod.type === 'upi' ? 'user@paytm' : undefined
-        };
-      } else if (selectedMethod.gateway === 'paypal') {
-        paymentDetails = {
-          email: 'user@example.com'
+          upiId: upiId.trim()
         };
       } else if (selectedMethod.gateway === 'cash') {
         paymentDetails = {
@@ -407,6 +386,40 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* UPI Form */}
+      {showUpiForm && paymentStatus.status !== 'completed' && (
+        <div className="mb-6 p-4 border border-gray-200 rounded-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-semibold text-gray-900 flex items-center">
+              <DevicePhoneMobileIcon className="h-5 w-5 text-green-500 mr-2" />
+              UPI Payment
+            </h4>
+            <button
+              onClick={() => setUpiId('demo@okhdfc')}
+              className="text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-full transition-colors"
+            >
+              Use Test UPI
+            </button>
+          </div>
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <ExclamationTriangleIcon className="h-4 w-4 text-yellow-600" />
+              <span className="text-sm text-yellow-800">
+                <strong>Demo Mode:</strong> Enter any valid-looking UPI ID (e.g. <code>demo@okhdfc</code>). No real payment is collected.
+              </span>
+            </div>
+          </div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">UPI ID</label>
+          <input
+            type="text"
+            placeholder="yourname@bank"
+            value={upiId}
+            onChange={(e) => setUpiId(e.target.value)}
+            className="input-field"
+          />
         </div>
       )}
 

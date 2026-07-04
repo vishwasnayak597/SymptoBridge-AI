@@ -496,6 +496,7 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
               appointmentId={createdAppointmentId || "temp"}
               doctorId={doctor.id}
               amount={doctor.consultationFee}
+              consultationType={selectedType}
               onPaymentSuccess={handlePaymentSuccess}
               onPaymentFailure={handlePaymentFailure}
               onCancel={handlePaymentCancel}

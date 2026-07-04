@@ -1,7 +1,7 @@
 {
   "name": "@aidoc/frontend",
   "version": "1.0.0",
-  "description": "Frontend application for aiDoc platform - Patient, Doctor, and Admin portals",
+  "description": "Frontend for SymptoBridge AI - Patient, Doctor, and Admin portals",
   "private": true,
   "scripts": {
     "dev": "next dev",

@@ -25,7 +25,7 @@ from engine import TriageModel
 
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model.pkl")
 
-app = FastAPI(title="aiDoc Triage Model", version="1.0.0")
+app = FastAPI(title="SymptoBridge AI Triage Model", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],

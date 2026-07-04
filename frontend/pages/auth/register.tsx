@@ -192,8 +192,8 @@ const RegisterPage: React.FC = () => {
   return (
     <>
       <Head>
-        <title>Create Account - aiDoc</title>
-        <meta name="description" content="Create your aiDoc account" />
+        <title>Create Account - SymptoBridge AI</title>
+        <meta name="description" content="Create your SymptoBridge AI account" />
       </Head>
 
       <div className="auth-container animate-fade-in">
@@ -203,9 +203,9 @@ const RegisterPage: React.FC = () => {
             <div className="auth-logo">
               <div className="flex items-center space-x-2">
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                  <span className="text-white font-bold text-xl">a</span>
+                  <span className="text-white font-bold text-xl">S</span>
                 </div>
-                <span className="text-2xl font-bold gradient-text">aiDoc</span>
+                <span className="text-2xl font-bold gradient-text">SymptoBridge</span>
               </div>
             </div>
             <h2 className="auth-title">Create your account</h2>

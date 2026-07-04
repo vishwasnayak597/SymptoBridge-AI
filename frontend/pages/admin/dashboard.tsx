@@ -626,7 +626,7 @@ const AdminDashboard: React.FC = () => {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <Head>
-        <title>Admin Dashboard - aiDoc</title>
+        <title>Admin Dashboard - SymptoBridge AI</title>
         <meta name="description" content="Admin dashboard for managing platform and users" />
       </Head>
 
@@ -637,9 +637,9 @@ const AdminDashboard: React.FC = () => {
             <div className="flex justify-between items-center py-4">
               <div className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">a</span>
+                  <span className="text-white font-bold text-lg">S</span>
                 </div>
-                <span className="text-xl font-bold gradient-text">aiDoc Admin</span>
+                <span className="text-xl font-bold gradient-text">SymptoBridge Admin</span>
               </div>
               <div className="flex items-center space-x-4">
                 <button

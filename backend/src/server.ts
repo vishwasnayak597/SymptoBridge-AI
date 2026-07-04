@@ -35,10 +35,13 @@ async function startServer() {
     const corsOptions = {
       origin: function (origin, callback) {
         const allowedOrigins = [
-          CLIENT_URL, 
-          'http://localhost:3000', 
-          'http://localhost:3001', 
-          'http://localhost:3002', 
+          CLIENT_URL,
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:3002',
+          // New SymptoBridge AI frontend
+          'https://symptobridge.onrender.com',
+          // Legacy origins kept so the old deployment keeps working during migration
           'https://ai-doctor-qc2b.onrender.com',
           'https://aidoc.onrender.com'
         ].filter(Boolean); // Remove any undefined values
@@ -110,7 +113,7 @@ async function startServer() {
       res.json({ 
         status: 'OK', 
         timestamp: new Date().toISOString(),
-        message: 'AI Doc backend is running perfectly',
+        message: 'SymptoBridge AI backend is running',
         environment: NODE_ENV,
         port: PORT,
         database: 'connected',

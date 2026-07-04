@@ -1,7 +1,7 @@
 {
   "name": "@aidoc/backend",
   "version": "1.0.0",
-  "description": "Backend API server for aiDoc platform with AI, video, maps, and payment integrations",
+  "description": "Backend API server for SymptoBridge AI platform with AI, video, maps, and payment integrations",
   "main": "dist/backend/src/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",

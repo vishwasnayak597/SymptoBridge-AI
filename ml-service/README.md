@@ -1,4 +1,4 @@
-# aiDoc Triage ML Service
+# SymptoBridge AI - Triage ML Service
 
 A self-contained Python/FastAPI microservice that **trains and serves its own** probabilistic
 diagnosis model and drives **sequential, information-gain-based triage** — the symptom checker's
