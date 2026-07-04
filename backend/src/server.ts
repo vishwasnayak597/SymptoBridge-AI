@@ -39,8 +39,9 @@ async function startServer() {
           'http://localhost:3000',
           'http://localhost:3001',
           'http://localhost:3002',
-          // New SymptoBridge AI frontend
+          // New SymptoBridge AI frontend (static site + the combined service origin)
           'https://symptobridge.onrender.com',
+          'https://symptobridge-ai.onrender.com',
           // Legacy origins kept so the old deployment keeps working during migration
           'https://ai-doctor-qc2b.onrender.com',
           'https://aidoc.onrender.com'
