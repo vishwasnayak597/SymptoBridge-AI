@@ -142,6 +142,15 @@ export class PaymentService {
           paymentId: payment._id.toString()
         });
 
+        const { publishEvent } = await import('./EventBus');
+        publishEvent({
+          type: 'payment.completed',
+          actorId: payment.patient?.toString(),
+          entityType: 'payment',
+          entityId: payment._id.toString(),
+          payload: { amount: payment.amount, gateway: payment.paymentGateway, appointmentId: payment.appointment?.toString() }
+        });
+
         // Send notifications
         await this.sendPaymentNotifications(payment, 'success');
       } else if (!gatewayResponse.success) {

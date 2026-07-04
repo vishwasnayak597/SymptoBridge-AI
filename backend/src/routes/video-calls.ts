@@ -27,16 +27,34 @@ router.post('/', [
 
     // Create video call
     const callData = await VideoCallService.createVideoCall(appointmentId);
-    
+
     // Update appointment status to 'confirmed' so patient knows doctor started the call
     const { Appointment } = await import('../models/Appointment');
-    await Appointment.findByIdAndUpdate(appointmentId, { 
+    const appointment = await Appointment.findByIdAndUpdate(appointmentId, {
       status: 'confirmed',
       videoCallId: callData.callId,
       videoCallUrl: callData.callUrl
+    }, { new: true });
+
+    // Instant ring: push to the patient's socket room (polling remains as fallback)
+    if (appointment) {
+      const { SocketService } = await import('../services/SocketService');
+      SocketService.emitToUser(appointment.patient.toString(), 'call:ring', {
+        appointmentId,
+        doctorName: `${req.user!.firstName} ${req.user!.lastName}`,
+        appointmentDate: appointment.appointmentDate,
+      });
+    }
+
+    const { publishEvent } = await import('../services/EventBus');
+    publishEvent({
+      type: 'call.started',
+      actorId: userId,
+      entityType: 'appointment',
+      entityId: appointmentId,
+      payload: { callId: callData.callId }
     });
 
-    
     res.status(201).json({ success: true, data: callData, message: 'Video call created successfully' });
   } catch (error) {
     console.error('Error creating video call:', error);
@@ -66,6 +84,15 @@ router.post('/:callId/token', [
 router.post('/:callId/end', [authenticate, param('callId').notEmpty()], async (req: Request, res: Response) => {
   try {
     const session = await VideoCallService.endVideoCall(req.params.callId);
+
+    const { publishEvent } = await import('../services/EventBus');
+    publishEvent({
+      type: 'call.ended',
+      actorId: req.user!._id.toString(),
+      entityType: 'call',
+      entityId: req.params.callId
+    });
+
     res.json({ success: true, data: session, message: 'Video call ended successfully' });
   } catch (error) {
     console.error('Error ending video call:', error);

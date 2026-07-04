@@ -35,8 +35,16 @@ router.post('/', auth, async (req, res) => {
 
     
     await prescription.save();
-    
-    
+
+    const { publishEvent } = await import('../services/EventBus');
+    publishEvent({
+      type: 'prescription.issued',
+      actorId: req.user!._id.toString(),
+      entityType: 'prescription',
+      entityId: prescription._id.toString(),
+      payload: { patient: String(patient), medicationCount: medications?.length || 0 }
+    });
+
     await prescription.populate([
       { path: 'patient', select: 'firstName lastName email' },
       { path: 'doctor', select: 'firstName lastName specialization' }

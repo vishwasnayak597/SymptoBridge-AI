@@ -3,6 +3,7 @@ import { Appointment, IAppointment, AppointmentStatus, ConsultationType } from '
 import User from '../models/User';
 import { NotificationService } from './NotificationService';
 import { VideoCallService } from './VideoCallService';
+import { publishEvent } from './EventBus';
 
 export interface CreateAppointmentRequest {
   patientId: string;
@@ -74,6 +75,14 @@ export class AppointmentService {
     await appointment.save();
     await appointment.populate('patient', 'firstName lastName email phoneNumber');
     await appointment.populate('doctor', 'firstName lastName email phoneNumber specialization');
+
+    publishEvent({
+      type: 'appointment.booked',
+      actorId: patientId,
+      entityType: 'appointment',
+      entityId: appointment._id.toString(),
+      payload: { doctorId, consultationType, specialization, fee, appointmentDate: appointmentDate.toISOString() }
+    });
 
     await NotificationService.createNotification({
       recipient: doctorId,
@@ -196,6 +205,16 @@ export class AppointmentService {
     const oldStatus = appointment.status;
     appointment.status = status;
 
+    if (oldStatus !== status) {
+      publishEvent({
+        type: 'appointment.status_changed',
+        actorId: userId,
+        entityType: 'appointment',
+        entityId: appointmentId,
+        payload: { from: oldStatus, to: status }
+      });
+    }
+
     if (status === 'confirmed' && appointment.consultationType === 'video') {
       const videoCallData = await VideoCallService.createVideoCall(appointmentId);
       appointment.videoCallId = videoCallData.callId;
@@ -303,6 +322,14 @@ export class AppointmentService {
 
     appointment.status = 'cancelled';
     await appointment.save();
+
+    publishEvent({
+      type: 'appointment.cancelled',
+      actorId: userId,
+      entityType: 'appointment',
+      entityId: appointmentId,
+      payload: { reason }
+    });
 
     const isDoctor = appointment.doctor._id.toString() === userId;
     const recipient = isDoctor ? appointment.patient._id.toString() : appointment.doctor._id.toString();

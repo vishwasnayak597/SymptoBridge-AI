@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { useAuthContext } from '../../components/AuthProvider';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
-import VideoCall from '../../components/VideoCall';
 import NotificationPanel from '../../components/NotificationPanel';
 import DoctorScheduleCalendar from '../../components/DoctorScheduleCalendar';
 import { apiClient } from '../../lib/api';
@@ -94,7 +93,6 @@ const DoctorDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
-  const [activeVideoCall, setActiveVideoCall] = useState<any>(null);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [modalType, setModalType] = useState<'details' | 'notes'>('details');
@@ -623,9 +621,11 @@ const DoctorDashboard: React.FC = () => {
 
   const startVideoCall = async (appointmentId: string) => {
     try {
+      // Creates the call record + rings the patient (socket push), then joins the room.
       const response = await apiClient.post('/video-calls', { appointmentId });
 
       if (response.data.success) {
+        window.location.href = `/video-call?id=${appointmentId}`;
       }
     } catch (error) {
       console.error('Error starting video call:', error);
@@ -1396,23 +1396,6 @@ const DoctorDashboard: React.FC = () => {
           {activeTab === 'profile' && renderProfile()}
         </main>
       </div>
-
-      {/* Video Call Modal */}
-      {activeVideoCall && (
-        <VideoCall
-          callId={activeVideoCall.callId}
-          appointmentId={activeVideoCall.appointmentId}
-          userRole="host"
-          onCallEnd={() => {
-            setActiveVideoCall(null);
-            fetchDashboardData();
-          }}
-          onError={(error) => {
-            console.error('Video call error:', error);
-            setActiveVideoCall(null);
-          }}
-        />
-      )}
 
       {/* Notification Panel */}
       <NotificationPanel

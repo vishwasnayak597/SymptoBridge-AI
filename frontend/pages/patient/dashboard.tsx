@@ -6,6 +6,7 @@ import SymptomChecker from '../../components/SymptomChecker';
 import DoctorSearch from '../../components/DoctorSearch';
 import AppointmentBooking from '../../components/AppointmentBooking';
 import { apiClient } from '../../lib/api';
+import { getSocket } from '../../lib/socket';
 import {
   HeartIcon,
   MapPinIcon,
@@ -531,6 +532,33 @@ const PatientDashboard: React.FC = () => {
     } finally {
       isCheckingRef.current = false;
     }
+  }, [user]);
+
+  // Instant ring via socket push (polling below remains as a fallback)
+  useEffect(() => {
+    if (!user) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onRing = (call: any) => {
+      setActiveVideoCallInvitation({
+        appointmentId: call.appointmentId,
+        doctorName: call.doctorName,
+        appointmentDate: call.appointmentDate
+          ? new Date(call.appointmentDate).toLocaleString()
+          : 'Now',
+      });
+      if (videoCallTimeoutRef.current) clearTimeout(videoCallTimeoutRef.current);
+      videoCallTimeoutRef.current = setTimeout(() => {
+        setActiveVideoCallInvitation(null);
+        videoCallTimeoutRef.current = null;
+      }, 5 * 60 * 1000);
+    };
+
+    socket.on('call:ring', onRing);
+    return () => {
+      socket.off('call:ring', onRing);
+    };
   }, [user]);
 
   // Poll for active video calls every 15 seconds (reduced frequency)

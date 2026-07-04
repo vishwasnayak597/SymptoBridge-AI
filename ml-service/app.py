@@ -14,9 +14,12 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import FastAPI
+import time
+
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from prometheus_client import Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 from engine import TriageModel
 
@@ -29,6 +32,30 @@ app.add_middleware(
 )
 
 _model: Optional[TriageModel] = None
+
+# Prometheus: request-duration histogram labeled by path/method/status.
+REQUEST_DURATION = Histogram(
+    "ml_request_duration_seconds",
+    "ML service request duration in seconds",
+    ["method", "path", "status"],
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+)
+
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if request.url.path != "/metrics":
+        REQUEST_DURATION.labels(
+            method=request.method, path=request.url.path, status=str(response.status_code)
+        ).observe(time.perf_counter() - start)
+    return response
+
+
+@app.get("/metrics")
+def metrics():
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 def get_model() -> Optional[TriageModel]:

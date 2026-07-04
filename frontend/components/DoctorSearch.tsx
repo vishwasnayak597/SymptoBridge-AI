@@ -102,21 +102,23 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch doctors from API
+  // Fetch doctors from API (with real geospatial distance when location is known)
   useEffect(() => {
     const fetchDoctors = async () => {
       try {
         setLoading(true);
         setError(null);
-        
-        const response = await apiClient.get('/users/doctors');
+
+        // With coordinates, the backend runs a $geoNear query and returns true distanceKm.
+        const geoQuery = userLocation ? `?lat=${userLocation.lat}&lng=${userLocation.lng}` : '';
+        const response = await apiClient.get(`/users/doctors${geoQuery}`);
 
         if (response.status !== 200) {
           throw new Error('Failed to fetch doctors');
         }
 
         const data = response.data;
-        
+
         // Transform API data to match our Doctor interface
         const transformedDoctors: Doctor[] = data.data?.map((doc: any) => ({
           id: doc._id,
@@ -130,10 +132,11 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
           location: {
             address: doc.location?.address || doc.address?.street || 'Medical Center',
             city: doc.location?.city || doc.address?.city || 'Mumbai',
-            distance: Math.random() * 10, // TODO: Calculate actual distance based on coordinates
-            coordinates: { 
-              lat: doc.location?.coordinates?.latitude || doc.address?.coordinates?.[0] || 19.0760, 
-              lng: doc.location?.coordinates?.longitude || doc.address?.coordinates?.[1] || 72.8777 
+            // Real distance computed by MongoDB's 2dsphere $geoNear (null when unknown)
+            distance: typeof doc.distanceKm === 'number' ? doc.distanceKm : Number.POSITIVE_INFINITY,
+            coordinates: {
+              lat: doc.location?.geo?.coordinates?.[1] || doc.location?.coordinates?.latitude || 19.0760,
+              lng: doc.location?.geo?.coordinates?.[0] || doc.location?.coordinates?.longitude || 72.8777
             }
           },
           availability: {
@@ -161,7 +164,7 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
     };
 
     fetchDoctors();
-  }, []);
+  }, [userLocation]); // refetch with geo query once the browser shares location
 
   // Get user location
   useEffect(() => {
@@ -428,9 +431,11 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
                     <span className="text-sm text-gray-600">
                       {doctor.location.address}, {doctor.location.city}
                     </span>
-                    <span className="text-xs text-gray-500 ml-2">
-                      ({doctor.location.distance.toFixed(1)} km away)
-                    </span>
+                    {Number.isFinite(doctor.location.distance) && (
+                      <span className="text-xs text-gray-500 ml-2">
+                        ({doctor.location.distance.toFixed(1)} km away)
+                      </span>
+                    )}
                   </div>
                 </div>
 

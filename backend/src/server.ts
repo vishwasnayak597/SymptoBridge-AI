@@ -2,18 +2,24 @@
 import 'dotenv/config';
 import 'express-async-errors';
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import path from 'path';
 
 import Database from './utils/database';
 import logger, { morganStream } from './utils/logger';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { KeepAliveService } from './services/KeepAliveService';
+import { SocketService } from './services/SocketService';
+import { startEventConsumers, stopEventConsumers } from './services/EventBus';
+import { getRedis, closeRedis } from './utils/redis';
+import { requestId, httpMetrics, metricsHandler } from './middleware/observability';
 
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -77,23 +83,27 @@ async function startServer() {
     if (NODE_ENV !== 'test') {
       app.use(morgan('combined', { stream: morganStream }));
     }
-    
-    // Rate limiting - Very permissive for development
+
+    // Observability: request IDs + Prometheus HTTP metrics
+    app.use(requestId);
+    app.use(httpMetrics);
+    app.get('/metrics', metricsHandler);
+
+    // Rate limiting — Redis-backed when available so limits hold across instances;
+    // falls back to the in-memory store (single-instance only) without REDIS_URL.
+    const redis = getRedis();
     const globalRateLimit = rateLimit({
-      windowMs: 1 * 60 * 1000, // 1 minute window for development
-      max: NODE_ENV === 'production' ? 100 : 10000, // 10000 requests per minute in dev
-      message: { error: 'Too many requests from this IP' },
+      windowMs: 1 * 60 * 1000,
+      max: NODE_ENV === 'production' ? 300 : 10000,
+      message: { success: false, error: 'Too many requests from this IP' },
       standardHeaders: true,
       legacyHeaders: false,
-      // Skip rate limiting for development entirely
-      skip: (req) => {
-        if (NODE_ENV === 'development') {
-          return true; // Skip all rate limiting in development
-        }
-        return false;
-      }
+      skip: () => NODE_ENV === 'development',
+      ...(redis
+        ? { store: new RedisStore({ sendCommand: (command: string, ...args: string[]) => redis.call(command, ...args) as any, prefix: 'rl:' }) }
+        : {}),
     });
-    app.use(globalRateLimit);
+    app.use('/api', globalRateLimit);
     
     // Health check route (before database connection)
     app.get('/health', (req, res) => {
@@ -124,7 +134,8 @@ async function startServer() {
       const prescriptionRoutes = await import('./routes/prescriptions');
       const reportRoutes = await import('./routes/reports');
       const adminSpecializationRoutes = await import('./routes/admin-specializations');
-      
+      const auditRoutes = await import('./routes/audit');
+
       app.use('/api/auth', authRoutes.default);
       app.use('/api/ai', aiRoutes.default);
       app.use('/api/appointments', appointmentRoutes.default);
@@ -142,6 +153,7 @@ async function startServer() {
       app.use('/api/prescriptions', prescriptionRoutes.default);
       app.use('/api/reports', reportRoutes.default);
       app.use('/api/admin', adminSpecializationRoutes.default);
+      app.use('/api/audit', auditRoutes.default);
     } catch (routeError) {
       console.error('❌ Error loading routes:', routeError);
       throw routeError;
@@ -185,23 +197,30 @@ async function startServer() {
     app.use(notFoundHandler);
     app.use(errorHandler);
     
-    // Start HTTP server
-    
-    // Wrap app.listen in a Promise to ensure async function waits
+    // Start HTTP server with Socket.IO attached (signaling + real-time push)
+    const httpServer = http.createServer(app);
+    SocketService.init(httpServer);
+
+    // Start domain-event consumers (Redis Streams groups, or in-process fallback)
+    startEventConsumers();
+
     await new Promise<void>((resolve, reject) => {
-      const server = app.listen(PORT, () => {
+      const server = httpServer.listen(PORT, () => {
         logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
         logger.info(`Health check: http://localhost:${PORT}/health`);
-        
+
         // Keep server alive with periodic heartbeat
         const heartbeat = setInterval(() => {
         }, 60000); // Every minute
-        
+
         // Graceful shutdown handlers
         const gracefulShutdown = (signal: string) => {
           clearInterval(heartbeat);
           KeepAliveService.stop();
+          stopEventConsumers();
+          SocketService.close().catch(() => {});
           server.close(() => {
+            closeRedis().catch(() => {});
             Database.disconnect?.();
             process.exit(0);
           });

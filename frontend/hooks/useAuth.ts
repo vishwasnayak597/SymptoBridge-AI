@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { User, ApiResponse } from '../../shared/types';
 import apiClient from '../lib/api';
+import { disconnectSocket } from '../lib/socket';
 import toast from 'react-hot-toast';
 
 interface AuthTokens {
@@ -198,6 +199,7 @@ export const useAuth = (): UseAuthReturn => {
       console.error('Logout request failed:', error);
     } finally {
       clearAccessToken();
+      disconnectSocket();
       setUser(null);
       toast.success('Logged out successfully');
     }

@@ -179,9 +179,21 @@ const UserSchema = new Schema<IUserDocument>({
     coordinates: {
       latitude: Number,
       longitude: Number
+    },
+    // GeoJSON Point [lng, lat] — the shape the 2dsphere index actually requires
+    // (the legacy {latitude, longitude} object above cannot be geo-queried).
+    geo: {
+      type: {
+        type: String,
+        enum: ['Point']
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: undefined
+      }
     }
   },
-  
+
   permissions: [String]
 }, {
   timestamps: true,
@@ -298,6 +310,6 @@ UserSchema.methods.toUserObject = function(): IUser {
 
 UserSchema.index({ email: 1 });
 UserSchema.index({ role: 1 });
-UserSchema.index({ 'location.coordinates': '2dsphere' });
+UserSchema.index({ 'location.geo': '2dsphere' }, { sparse: true });
 
 export default mongoose.model<IUserDocument>('User', UserSchema); 

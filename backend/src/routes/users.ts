@@ -5,19 +5,64 @@ import { authenticate } from '../middleware/auth';
 
 const router = express.Router();
 
+type DoctorFilter = Record<string, unknown>;
+
+/**
+ * Load active verified doctors, sorted by distance when the caller shares coordinates.
+ * The geospatial path uses a 2dsphere $geoNear; if the index isn't available yet it falls
+ * back to a plain listing so the core feature never breaks on a sort concern.
+ */
+async function loadDoctors(
+  filter: DoctorFilter,
+  near: { lat: number; lng: number; maxKm: number } | null
+): Promise<any[]> {
+  if (!near) {
+    return User.find(filter).lean();
+  }
+
+  try {
+    const withGeo = await User.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [near.lng, near.lat] },
+          distanceField: 'distanceMeters',
+          maxDistance: near.maxKm * 1000,
+          query: filter,
+          spherical: true,
+          key: 'location.geo',
+        },
+      },
+    ]);
+    // $geoNear only returns docs that have coordinates; append the rest with unknown distance.
+    const seen = new Set(withGeo.map((d) => d._id.toString()));
+    const withoutGeo = await User.find({ ...filter, 'location.geo.coordinates': { $exists: false } }).lean();
+    return [...withGeo, ...withoutGeo.filter((d) => !seen.has(d._id.toString()))];
+  } catch (err) {
+    // e.g. index still building right after a deploy — degrade to a plain listing.
+    return User.find(filter).lean();
+  }
+}
+
 /**
  * @route GET /api/users/doctors
- * @desc Get all verified doctors
+ * @desc Get verified doctors, nearest-first when lat/lng are provided
  * @access Public (for patients to find doctors)
  */
 router.get('/doctors', async (req: Request, res: Response) => {
   try {
-    const doctors = await User.find(
-      { role: 'doctor', isEmailVerified: true, isActive: true }
-    ).lean();
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+    const maxKm = parseFloat(req.query.maxKm as string) || 5000; // default: effectively unbounded
+    const baseFilter = { role: 'doctor', isEmailVerified: true, isActive: true };
+
+    const hasLocation = !Number.isNaN(lat) && !Number.isNaN(lng);
+    let doctors = await loadDoctors(baseFilter, hasLocation ? { lat, lng, maxKm } : null);
 
     // Transform data to match frontend expectations
     const transformedDoctors = doctors.map(doctor => ({
+      distanceKm: typeof doctor.distanceMeters === 'number'
+        ? Math.round((doctor.distanceMeters / 1000) * 10) / 10
+        : null,
       _id: doctor._id,
       firstName: doctor.firstName,
       lastName: doctor.lastName,
