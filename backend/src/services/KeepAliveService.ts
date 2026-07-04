@@ -20,8 +20,8 @@ export class KeepAliveService {
   private static config: KeepAliveConfig = {
     PING_INTERVAL: (process.env.KEEP_ALIVE_INTERVAL ? parseInt(process.env.KEEP_ALIVE_INTERVAL) : 3) * 60 * 1000, // 3 minutes default
     ENDPOINTS: [
-      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/health` : 'https://symptobridge-api.onrender.com/health',
-      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api/auth/me` : 'https://symptobridge-api.onrender.com/api/auth/me',
+      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/health` : 'https://symptobridge-ai.onrender.com/health',
+      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api/auth/me` : 'https://symptobridge-ai.onrender.com/api/auth/me',
       // Keep the ML triage service warm too, so the first triage isn't a 50s cold start
       `${process.env.ML_SERVICE_URL || 'https://symptobridge-ml.onrender.com'}/health`
     ],

@@ -1,7 +1,7 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { ApiResponse } from '../../shared/types';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://symptobridge-api.onrender.com/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://symptobridge-ai.onrender.com/api';
 const REQUEST_TIMEOUT = 30000;
 
 interface TokenRefreshResponse {
