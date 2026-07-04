@@ -49,8 +49,11 @@ async function startServer() {
         
         // Allow requests with no origin (like mobile apps or curl requests)
         if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.indexOf(origin) !== -1) {
+
+        // Allow the explicit list, plus any of our Render deployments (*.onrender.com),
+        // so renaming/adding a service never breaks CORS.
+        const isRenderHost = /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin);
+        if (allowedOrigins.indexOf(origin) !== -1 || isRenderHost) {
           callback(null, true);
         } else {
           callback(new Error('Not allowed by CORS'));
