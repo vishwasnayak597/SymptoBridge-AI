@@ -727,6 +727,7 @@ const AdminDashboard: React.FC = () => {
       <NotificationPanel
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
+        onUnreadCountChange={setNotificationCount}
         onNotificationClick={(notification) => {
         }}
       />

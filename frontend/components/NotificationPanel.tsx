@@ -37,12 +37,16 @@ interface NotificationPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onNotificationClick?: (notification: Notification) => void;
+  /** Notifies the parent (e.g. the header bell badge) whenever the authoritative
+   *  unread count changes, so the badge stays in sync as notifications are read. */
+  onUnreadCountChange?: (count: number) => void;
 }
 
 const NotificationPanel: React.FC<NotificationPanelProps> = ({
   isOpen,
   onClose,
-  onNotificationClick
+  onNotificationClick,
+  onUnreadCountChange
 }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +99,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       const response = await apiClient.get('/notifications/unread-count');
 
       if (response.data.success) {
-        setUnreadCount(response.data.data?.count || 0);
+        const count = response.data.data?.count || 0;
+        setUnreadCount(count);
+        onUnreadCountChange?.(count);
       }
     } catch (error) {
       console.error('Error fetching unread count:', error);
@@ -113,8 +119,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
             : notification
         )
       );
-      
-      setUnreadCount(prev => Math.max(0, prev - 1));
+
+      // Re-sync the true unread count from the server so the header badge updates too
+      fetchUnreadCount();
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -127,8 +134,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       setNotifications(prev =>
         prev.map(notification => ({ ...notification, isRead: true }))
       );
-      
+
       setUnreadCount(0);
+      onUnreadCountChange?.(0);
     } catch (error) {
       console.error('Error marking all notifications as read:', error);
     }

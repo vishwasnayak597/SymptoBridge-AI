@@ -1342,7 +1342,7 @@ const DoctorDashboard: React.FC = () => {
                 </div>
                 <span className="text-xl font-bold gradient-text">SymptoBridge</span>
               </Link>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 sm:space-x-4">
                 <button
                   onClick={() => setShowNotifications(true)}
                   className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
@@ -1355,8 +1355,8 @@ const DoctorDashboard: React.FC = () => {
                   )}
                 </button>
 
-                <span className="text-gray-700">Dr. {user?.firstName} {user?.lastName}</span>
-                <button onClick={handleLogout} className="btn-secondary text-sm">
+                <span className="hidden sm:inline text-gray-700 whitespace-nowrap">Dr. {user?.firstName} {user?.lastName}</span>
+                <button onClick={handleLogout} className="btn-secondary text-sm whitespace-nowrap">
                   Logout
                 </button>
               </div>
@@ -1406,6 +1406,7 @@ const DoctorDashboard: React.FC = () => {
       <NotificationPanel
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
+        onUnreadCountChange={setNotificationCount}
         onNotificationClick={(notification) => {
           // Handle notification click
         }}
