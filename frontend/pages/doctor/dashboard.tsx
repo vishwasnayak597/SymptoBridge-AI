@@ -1367,7 +1367,7 @@ const DoctorDashboard: React.FC = () => {
         {/* Navigation */}
         <nav className="bg-white border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex space-x-8">
+            <div className="flex space-x-8 overflow-x-auto">
               {[
                 { id: 'overview', label: 'Overview', icon: ChartBarIcon },
                 { id: 'appointments', label: 'Appointments', icon: CalendarDaysIcon },
@@ -1378,7 +1378,7 @@ const DoctorDashboard: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
+                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm flex-shrink-0 whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
