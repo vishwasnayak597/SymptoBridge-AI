@@ -338,7 +338,7 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                     Please select a date first
                   </div>
                 ) : (
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {slotsLoading ? (
                       // Loading state
                       TIME_SLOTS.map((time) => (
