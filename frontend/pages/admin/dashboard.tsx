@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
+import Link from 'next/link';
 import { useAuthContext } from '../../components/AuthProvider';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import NotificationPanel from '../../components/NotificationPanel';
@@ -635,12 +636,16 @@ const AdminDashboard: React.FC = () => {
         <header className="bg-white shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center">
+              <Link
+                href="/"
+                aria-label="Go to SymptoBridge home"
+                className="flex items-center space-x-2 group focus:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 rounded-lg"
+              >
+                <div className="w-8 h-8 bg-gradient-to-br from-purple-600 to-indigo-600 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
                   <span className="text-white font-bold text-lg">S</span>
                 </div>
                 <span className="text-xl font-bold gradient-text">SymptoBridge Admin</span>
-              </div>
+              </Link>
               <div className="flex items-center space-x-4">
                 <button
                   onClick={() => setShowNotifications(true)}
