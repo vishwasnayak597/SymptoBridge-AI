@@ -145,19 +145,16 @@ export class VideoCallService {
       // Import here to avoid circular dependency issues
       const { Appointment } = await import('../models/Appointment');
 
-      // Find appointments where:
-      // 1. Patient matches
-      // 2. Status is 'confirmed' (doctor started call)
-      // 3. Video call is active (within reasonable timeframe)
+      // A call only "rings" while it is actually live: the doctor started it
+      // (videoCallId set) AND that happened recently. Using updatedAt — not the
+      // appointment date — means a call that was never ended won't ring forever.
+      const RING_WINDOW_MS = 60 * 60 * 1000; // 60 minutes
       const activeAppointment = await Appointment.findOne({
         patient: patientId,
         status: 'confirmed',
         consultationType: 'video',
         videoCallId: { $exists: true },
-        appointmentDate: {
-          $gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Within last 24 hours
-          $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)   // Or next 7 days
-        }
+        updatedAt: { $gte: new Date(Date.now() - RING_WINDOW_MS) }
       })
       .populate('doctor', 'firstName lastName email')
       .populate('patient', 'firstName lastName email');
