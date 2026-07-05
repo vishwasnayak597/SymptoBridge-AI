@@ -557,14 +557,14 @@ const RegisterPage: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-8 text-sm text-gray-500 max-w-md">
+        <div className="text-center mt-8 text-sm text-white/90 max-w-md">
           <p>
             By creating an account, you agree to our{' '}
-            <Link href="/terms" className="text-blue-600 hover:text-blue-800">
+            <Link href="/terms" className="font-semibold text-white underline underline-offset-2 hover:text-white/80">
               Terms of Service
             </Link>{' '}
             and{' '}
-            <Link href="/privacy" className="text-blue-600 hover:text-blue-800">
+            <Link href="/privacy" className="font-semibold text-white underline underline-offset-2 hover:text-white/80">
               Privacy Policy
             </Link>
           </p>
