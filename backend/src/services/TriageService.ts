@@ -7,7 +7,14 @@
  * as a nicer parser, but the trained model does the actual inference.
  */
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8001';
+// Prefer the explicit env var. Fall back to localhost only in development — in
+// production the ML service is a separate Render service, never on localhost, so
+// defaulting there would make every triage call fail silently.
+const ML_SERVICE_URL =
+  process.env.ML_SERVICE_URL ||
+  (process.env.NODE_ENV === 'production'
+    ? 'https://symptobridge-ml.onrender.com'
+    : 'http://localhost:8001');
 
 export interface TriageCondition {
   disease: string;

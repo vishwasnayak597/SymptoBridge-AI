@@ -30,7 +30,13 @@ async function startServer() {
     
     // Create Express app
     const app = express();
-    
+
+    // Behind Render's load balancer, the client IP arrives in X-Forwarded-For.
+    // Trust the first proxy hop so req.ip is the real client (not the LB) — this is
+    // what express-rate-limit needs to key limits correctly. '1' (not `true`) so a
+    // client can't spoof the header to dodge rate limiting.
+    app.set('trust proxy', 1);
+
     // Setup CORS - this fixes your CORS issue!
     const corsOptions = {
       origin: function (origin, callback) {
