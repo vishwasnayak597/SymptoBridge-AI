@@ -34,7 +34,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline';
 
-type TabType = 'overview' | 'symptom-checker' | 'find-doctors' | 'appointments' | 'records' | 'prescriptions' | 'reminders' | 'reports';
+type TabType = 'overview' | 'symptom-checker' | 'find-doctors' | 'appointments' | 'prescriptions' | 'reminders' | 'reports';
 
 interface Doctor {
   id: string;
@@ -68,17 +68,6 @@ interface Appointment {
   fee: number;
   videoCallLink?: string;
   createdAt: string;
-}
-
-interface MedicalRecord {
-  id: string;
-  date: string;
-  type: 'consultation' | 'lab_test' | 'prescription' | 'checkup';
-  doctorName: string;
-  specialization: string;
-  diagnosis: string;
-  notes: string;
-  attachments?: string[];
 }
 
 interface Prescription {
@@ -125,39 +114,6 @@ interface Reminder {
 }
 
 // Dummy data
-const dummyMedicalRecords: MedicalRecord[] = [
-  {
-    id: '1',
-    date: '2025-08-15',
-    type: 'consultation',
-    doctorName: 'Dr. Sarah Wilson',
-    specialization: 'Cardiology',
-    diagnosis: 'Hypertension (High Blood Pressure)',
-    notes: 'Patient shows elevated blood pressure readings. Recommended lifestyle changes and medication. Follow-up in 3 months.',
-    attachments: ['ecg_report.pdf', 'blood_pressure_chart.pdf']
-  },
-  {
-    id: '2',
-    date: '2025-08-10',
-    type: 'lab_test',
-    doctorName: 'Dr. Michael Chen',
-    specialization: 'Internal Medicine',
-    diagnosis: 'Complete Blood Count - Normal',
-    notes: 'All blood parameters within normal range. Hemoglobin: 14.2 g/dL, WBC: 7,200/μL, Platelets: 280,000/μL',
-    attachments: ['cbc_report.pdf']
-  },
-  {
-    id: '3',
-    date: '2025-08-05',
-    type: 'checkup',
-    doctorName: 'Dr. Emily Rodriguez',
-    specialization: 'General Practice',
-    diagnosis: 'Annual Health Checkup - Good Health',
-    notes: 'Overall health status is good. BMI: 24.5 (Normal). Blood pressure: 120/80 mmHg. Recommended annual follow-up.',
-    attachments: ['health_summary.pdf']
-  }
-];
-
 const dummyPrescriptions: Prescription[] = [
   {
     id: '1',
@@ -286,7 +242,6 @@ const PatientDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   
   // New state for enhanced features
-  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
   const [uploadedReports, setUploadedReports] = useState<UploadedReport[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>(dummyReminders);
@@ -316,16 +271,11 @@ const PatientDashboard: React.FC = () => {
     try {
       setLoadingData(true);
       
-      // Fetch medical records, prescriptions, and reports in parallel
-      const [recordsRes, prescriptionsRes, reportsRes] = await Promise.all([
-        apiClient.get('/medical-records/my-records'),
+      // Fetch prescriptions and reports in parallel
+      const [prescriptionsRes, reportsRes] = await Promise.all([
         apiClient.get('/prescriptions/my-prescriptions'),
         apiClient.get('/reports/my-reports')
       ]);
-
-      if (recordsRes.data.success) {
-        setMedicalRecords(recordsRes.data.data);
-      }
 
       if (prescriptionsRes.data.success) {
         setPrescriptions(prescriptionsRes.data.data);
@@ -481,13 +431,13 @@ const PatientDashboard: React.FC = () => {
       }
     }
     
-    if (activeTab === 'records' || activeTab === 'prescriptions' || activeTab === 'reports') {
+    if (activeTab === 'prescriptions' || activeTab === 'reports') {
       // Only refetch if we don't have data or if explicitly needed
-      if (medicalRecords.length === 0 && prescriptions.length === 0 && uploadedReports.length === 0) {
+      if (prescriptions.length === 0 && uploadedReports.length === 0) {
         fetchMedicalData();
       }
     }
-  }, [activeTab, user, appointments.length, medicalRecords.length, prescriptions.length, uploadedReports.length, fetchAppointments, fetchMedicalData]);
+  }, [activeTab, user, appointments.length, prescriptions.length, uploadedReports.length, fetchAppointments, fetchMedicalData]);
 
   // Check for active video call invitations
   const isCheckingRef = useRef(false);
@@ -734,11 +684,11 @@ const PatientDashboard: React.FC = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Medical Records</p>
-              <p className="text-2xl font-bold text-gray-900">{medicalRecords.length}</p>
+              <p className="text-sm font-medium text-gray-600">Uploaded Reports</p>
+              <p className="text-2xl font-bold text-gray-900">{uploadedReports.length}</p>
             </div>
             <div className="p-2 bg-green-100 rounded-lg">
-              <DocumentTextIcon className="h-6 w-6 text-green-600" />
+              <DocumentArrowUpIcon className="h-6 w-6 text-green-600" />
             </div>
           </div>
         </div>
@@ -1074,101 +1024,6 @@ const PatientDashboard: React.FC = () => {
                   {appointment.consultationType === 'video' && !canJoinVideoCall(appointment) && appointment.status === 'confirmed' && (
                     <p className="text-xs text-gray-500">Call available 10 min before</p>
                   )}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderHistory = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Medical History</h2>
-          <p className="text-gray-600">Your complete medical records and consultation history</p>
-        </div>
-        <button
-          onClick={() => setActiveTab('reports')}
-          className="btn-primary flex items-center"
-        >
-          <DocumentArrowUpIcon className="h-4 w-4 mr-2" />
-          Upload Reports
-        </button>
-      </div>
-
-      {loadingData ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      ) : medicalRecords.length === 0 ? (
-        <div className="text-center py-12">
-          <DocumentTextIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No medical history yet</h3>
-          <p className="text-gray-600 mb-6">
-            Your consultation history and medical records will appear here
-          </p>
-          <button
-            onClick={() => setActiveTab('symptom-checker')}
-            className="btn-primary flex items-center mx-auto"
-          >
-            <SparklesIcon className="h-4 w-4 mr-2" />
-            Start Symptom Check
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {medicalRecords.map((record) => (
-            <div key={record.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className={`p-2 rounded-lg ${
-                      (record.type || 'consultation') === 'consultation' ? 'bg-blue-100 text-blue-600' :
-                      (record.type || 'consultation') === 'lab_test' ? 'bg-green-100 text-green-600' :
-                      (record.type || 'consultation') === 'prescription' ? 'bg-purple-100 text-purple-600' :
-                      'bg-orange-100 text-orange-600'
-                    }`}>
-                      {(record.type || 'consultation') === 'consultation' ? <ChatBubbleLeftRightIcon className="h-5 w-5" /> :
-                       (record.type || 'consultation') === 'lab_test' ? <BeakerIcon className="h-5 w-5" /> :
-                       (record.type || 'consultation') === 'prescription' ? <DocumentTextIcon className="h-5 w-5" /> :
-                       <ShieldCheckIcon className="h-5 w-5" />}
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900">{record.diagnosis}</h3>
-                      <p className="text-sm text-gray-600">{record.doctorName} • {record.specialization}</p>
-                    </div>
-                  </div>
-                  
-                  <p className="text-gray-700 mb-4">{record.notes}</p>
-                  
-                  {record.attachments && record.attachments.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {record.attachments.map((attachment, index) => (
-                        <span
-                          key={index}
-                          className="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full"
-                        >
-                          <DocumentTextIcon className="h-4 w-4 mr-1" />
-                          {attachment}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{new Date(record.date).toLocaleDateString()}</p>
-                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full mt-1 ${
-                    (record.type || 'consultation') === 'consultation' ? 'bg-blue-100 text-blue-800' :
-                    (record.type || 'consultation') === 'lab_test' ? 'bg-green-100 text-green-800' :
-                    (record.type || 'consultation') === 'prescription' ? 'bg-purple-100 text-purple-800' :
-                    'bg-orange-100 text-orange-800'
-                  }`}>
-                    {(record.type || 'consultation').replace('_', ' ').toUpperCase()}
-                  </span>
                 </div>
               </div>
             </div>
@@ -1763,7 +1618,6 @@ const PatientDashboard: React.FC = () => {
                 { id: 'symptom-checker', label: 'AI Symptom Checker', icon: SparklesIcon },
                 { id: 'find-doctors', label: 'Find Doctors', icon: MapPinIcon },
                 { id: 'appointments', label: 'Appointments', icon: CalendarDaysIcon },
-                { id: 'records', label: 'Medical History', icon: DocumentTextIcon },
                 { id: 'prescriptions', label: 'Prescriptions', icon: DocumentTextIcon },
                 { id: 'reports', label: 'Upload Reports', icon: DocumentArrowUpIcon },
                 { id: 'reminders', label: 'Reminders', icon: BellIcon }
@@ -1804,7 +1658,6 @@ const PatientDashboard: React.FC = () => {
             />
           )}
           {activeTab === 'appointments' && renderAppointments()}
-          {activeTab === 'records' && renderHistory()}
           {activeTab === 'prescriptions' && renderPrescriptions()}
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'reminders' && renderReminders()}
