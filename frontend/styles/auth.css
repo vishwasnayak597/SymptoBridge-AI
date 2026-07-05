@@ -2,36 +2,41 @@
    AUTHENTICATION STYLES
    =============================================== */
 
-/* Auth Container & Layout */
+/* Auth Container & Layout
+   flex-col so the card and the terms footer stack vertically (they are siblings);
+   overflow-x hidden keeps the decorative pattern from causing a horizontal scrollbar,
+   while vertical content is free to scroll on small screens / tall forms. */
 .auth-container {
-  @apply min-h-screen flex items-center justify-center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  @apply min-h-screen flex flex-col items-center justify-center py-10 px-4;
+  background: linear-gradient(135deg, #E8765A 0%, #C25C3C 100%);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .auth-container::before {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
   opacity: 0.1;
+  pointer-events: none;
+}
+
+/* keep the actual content above the decorative overlay */
+.auth-container > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Auth Card */
 .auth-card {
-  @apply bg-white rounded-2xl shadow-2xl border border-gray-100 p-8 w-full max-w-md;
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.95);
-  transition: all 0.3s ease;
+  @apply bg-white rounded-3xl shadow-soft border border-gray-100 p-8 w-full max-w-md;
+  background: rgba(255, 255, 255, 0.97);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .auth-card:hover {
-  @apply shadow-strong;
-  transform: translateY(-5px);
+  @apply shadow-medium;
 }
 
 /* Auth Header */
@@ -44,8 +49,8 @@
 }
 
 .auth-title {
-  @apply text-3xl font-bold text-gray-900 mb-2;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  @apply text-3xl font-serif font-bold mb-2;
+  background: linear-gradient(135deg, #E8765A 0%, #C25C3C 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -64,17 +69,6 @@
   @apply space-y-4;
 }
 
-/* Auth Modal */
-.auth-modal-overlay {
-  @apply fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4;
-  animation: fadeIn 0.3s ease-out;
-}
-
-.auth-modal-content {
-  @apply bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto;
-  animation: slideInUp 0.3s ease-out;
-}
-
 /* Auth Toggle */
 .auth-toggle {
   @apply flex bg-gray-100 rounded-lg p-1 mb-6;
@@ -85,53 +79,11 @@
 }
 
 .auth-toggle-button.active {
-  @apply bg-white shadow-sm text-blue-600;
+  @apply bg-white shadow-sm text-coral-600;
 }
 
 .auth-toggle-button:not(.active) {
   @apply text-gray-600 hover:text-gray-900;
-}
-
-/* Role Selection */
-.role-selector {
-  @apply grid grid-cols-2 gap-4;
-}
-
-.role-option {
-  @apply relative flex cursor-pointer rounded-lg border p-4 hover:bg-gray-50 transition-all duration-200;
-}
-
-.role-option.selected {
-  @apply border-blue-500 ring-2 ring-blue-500 bg-blue-50;
-}
-
-.role-option:not(.selected) {
-  @apply border-gray-300;
-}
-
-.role-option input[type="radio"] {
-  @apply sr-only;
-}
-
-.role-icon {
-  @apply w-6 h-6 transition-colors duration-200;
-}
-
-.role-option.selected .role-icon {
-  @apply text-blue-600;
-}
-
-.role-option:not(.selected) .role-icon {
-  @apply text-gray-400;
-}
-
-/* Professional Info Section */
-.professional-info {
-  @apply p-4 bg-blue-50 rounded-lg border border-blue-200;
-}
-
-.professional-info h3 {
-  @apply text-sm font-medium text-blue-900 mb-3;
 }
 
 /* Password Field */
@@ -143,43 +95,7 @@
   @apply absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer;
 }
 
-/* Auth Animations */
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Auth Responsive */
-@media (max-width: 640px) {
-  .auth-card {
-    @apply px-6 py-6 mx-4;
-  }
-  
-  .auth-title {
-    @apply text-2xl;
-  }
-  
-  .role-selector {
-    @apply grid-cols-1 gap-3;
-  }
-}
-
-/* Auth Loading States */
+/* Auth States */
 .auth-loading {
   @apply opacity-50 pointer-events-none;
 }
@@ -188,213 +104,26 @@
   @apply inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin;
 }
 
-/* Auth Success States */
 .auth-success {
   @apply bg-green-50 border-green-200 text-green-800;
 }
 
-/* Auth Error States */
 .auth-error {
   @apply bg-red-50 border-red-200 text-red-800;
 }
 
-/* ===============================================
-/* ===============================================
-   AUTHENTICATION STYLES
-   =============================================== */
-
-/* Auth Container & Layout */
-.auth-container {
-  @apply min-h-screen flex items-center justify-center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  position: relative;
-  overflow: hidden;
-}
-
-.auth-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
-  opacity: 0.1;
-}
-
-/* Auth Card */
-.auth-card {
-  @apply bg-white rounded-2xl shadow-2xl border border-gray-100 p-8 w-full max-w-md;
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.95);
-  transition: all 0.3s ease;
-}
-
-.auth-card:hover {
-  @apply shadow-strong;
-  transform: translateY(-5px);
-}
-
-/* Auth Header */
-.auth-header {
-  @apply text-center mb-8;
-}
-
-.auth-logo {
-  @apply flex justify-center mb-6;
-}
-
-.auth-title {
-  @apply text-3xl font-bold text-gray-900 mb-2;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.auth-subtitle {
-  @apply text-gray-600 text-base;
-}
-
-/* Auth Forms */
-.auth-form {
-  @apply space-y-6;
-}
-
-.auth-fields {
-  @apply space-y-4;
-}
-
-/* Auth Modal */
-.auth-modal-overlay {
-  @apply fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-center p-4;
-  animation: fadeIn 0.3s ease-out;
-}
-
-.auth-modal-content {
-  @apply bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto;
-  animation: slideInUp 0.3s ease-out;
-}
-
-/* Auth Toggle */
-.auth-toggle {
-  @apply flex bg-gray-100 rounded-lg p-1 mb-6;
-}
-
-.auth-toggle-button {
-  @apply flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all duration-200;
-}
-
-.auth-toggle-button.active {
-  @apply bg-white shadow-sm text-blue-600;
-}
-
-.auth-toggle-button:not(.active) {
-  @apply text-gray-600 hover:text-gray-900;
-}
-
-/* Role Selection */
-.role-selector {
-  @apply grid grid-cols-2 gap-4;
-}
-
-.role-option {
-  @apply relative flex cursor-pointer rounded-lg border p-4 hover:bg-gray-50 transition-all duration-200;
-}
-
-.role-option.selected {
-  @apply border-blue-500 ring-2 ring-blue-500 bg-blue-50;
-}
-
-.role-option:not(.selected) {
-  @apply border-gray-300;
-}
-
-.role-option input[type="radio"] {
-  @apply sr-only;
-}
-
-.role-icon {
-  @apply w-6 h-6 transition-colors duration-200;
-}
-
-.role-option.selected .role-icon {
-  @apply text-blue-600;
-}
-
-.role-option:not(.selected) .role-icon {
-  @apply text-gray-400;
-}
-
-/* Professional Info Section */
-.professional-info {
-  @apply p-4 bg-blue-50 rounded-lg border border-blue-200;
-}
-
-.professional-info h3 {
-  @apply text-sm font-medium text-blue-900 mb-3;
-}
-
-/* Password Field */
-.password-field {
-  @apply relative;
-}
-
-.password-toggle {
-  @apply absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors cursor-pointer;
-}
-
-/* Auth Animations */
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-/* Auth Responsive */
+/* Responsive */
 @media (max-width: 640px) {
   .auth-card {
-    @apply px-6 py-6 mx-4;
+    @apply px-6 py-6;
   }
-  
+
   .auth-title {
     @apply text-2xl;
   }
-  
-  .role-selector {
+
+  /* role radios stack on small screens */
+  .auth-card .grid.grid-cols-2 {
     @apply grid-cols-1 gap-3;
   }
 }
-
-/* Auth Loading States */
-.auth-loading {
-  @apply opacity-50 pointer-events-none;
-}
-
-.auth-spinner {
-  @apply inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin;
-}
-
-/* Auth Success States */
-.auth-success {
-  @apply bg-green-50 border-green-200 text-green-800;
-}
-
-/* Auth Error States */
-.auth-error {
-  @apply bg-red-50 border-red-200 text-red-800;
-} 
