@@ -62,19 +62,48 @@ async function getSymptoms(): Promise<SymptomMeta[]> {
 }
 
 /**
- * Seed symptom evidence from the patient's free-text description by matching the model's
- * symptom vocabulary (all underscore-separated tokens of a symptom id must appear).
+ * Common lay phrasings that the plain token match can't catch, mapped to symptom ids.
+ * Token matching handles the easy cases ("back pain" -> back_pain); this covers wording
+ * where the patient never says the symptom id's words ("shoots down my leg", "when I stand").
+ */
+const SYNONYM_PHRASES: Array<[RegExp, string]> = [
+  [/\b(worse|hurts?) (when|on) (i )?(stand|move|bend|walk|sit)|when i stand|on movement|bending/, 'pain_worse_movement'],
+  [/shoots? down|down (my|the) leg|into (my|the) leg|radiat/, 'radiating_leg_pain'],
+  [/stiff/, 'stiffness'],
+  [/burning (when|to) (i )?(pee|urinat)|burns? when i pee/, 'burning_urination'],
+  [/blood in (my )?(urine|pee)/, 'blood_in_urine'],
+  [/(throw|threw|throwing) up|vomit/, 'vomiting'],
+  [/short(ness)? of breath|can'?t breathe|out of breath|breathless/, 'shortness_of_breath'],
+  [/can'?t smell|lost my sense of smell|no sense of smell/, 'loss_of_smell'],
+  [/runny nose|stuffy nose|blocked nose/, 'runny_nose'],
+];
+
+/**
+ * Seed symptom evidence from the patient's free-text description.
+ *
+ * Two passes: (1) match the model's symptom vocabulary where every underscore-separated
+ * token of a symptom id appears in the text; (2) apply a curated synonym map for lay
+ * phrasings the token match would miss. Only symptoms the model actually knows are kept.
  */
 export async function extractInitialFindings(symptoms: string): Promise<Record<string, number>> {
   const text = ` ${symptoms.toLowerCase()} `;
   const syms = await getSymptoms();
+  const known = new Set(syms.map((s) => s.id));
   const evidence: Record<string, number> = {};
+
   for (const s of syms) {
     const tokens = s.id.split('_').filter((t) => t.length > 2);
     if (tokens.length > 0 && tokens.every((t) => text.includes(t))) {
       evidence[s.id] = 1;
     }
   }
+
+  for (const [pattern, symptomId] of SYNONYM_PHRASES) {
+    if (known.has(symptomId) && pattern.test(text)) {
+      evidence[symptomId] = 1;
+    }
+  }
+
   return evidence;
 }
 

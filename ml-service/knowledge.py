@@ -49,7 +49,10 @@ SYMPTOMS: dict[str, str] = {
     "burning_urination": "Does it burn when you urinate?",
     "frequent_urination": "Are you urinating more often than usual?",
     "blood_in_urine": "Have you noticed blood in your urine?",
-    "back_pain": "Do you have lower back or flank pain?",
+    "back_pain": "Do you have back pain?",
+    "pain_worse_movement": "Does the pain get worse when you move, bend, or stand?",
+    "radiating_leg_pain": "Does the pain shoot down into your leg or buttock?",
+    "stiffness": "Do your muscles or joints feel stiff?",
 }
 
 # disease -> metadata + characteristic symptoms with P(symptom present | disease)
@@ -130,6 +133,21 @@ DISEASES: dict[str, dict] = {
         "specialization": "Urology", "urgency": "medium",
         "symptoms": {"burning_urination": 0.9, "frequent_urination": 0.8, "back_pain": 0.4,
                      "blood_in_urine": 0.3, "fever": 0.3, "abdominal_pain": 0.3},
+    },
+    "Muscle Strain": {
+        "specialization": "Orthopedics", "urgency": "low",
+        "symptoms": {"back_pain": 0.85, "pain_worse_movement": 0.8, "muscle_pain": 0.7,
+                     "stiffness": 0.6, "joint_pain": 0.2},
+    },
+    "Sciatica": {
+        "specialization": "Orthopedics", "urgency": "medium",
+        "symptoms": {"back_pain": 0.8, "radiating_leg_pain": 0.85, "pain_worse_movement": 0.6,
+                     "muscle_pain": 0.3, "stiffness": 0.4},
+    },
+    "Kidney Stone": {
+        "specialization": "Urology", "urgency": "high",
+        "symptoms": {"back_pain": 0.7, "blood_in_urine": 0.5, "frequent_urination": 0.4,
+                     "nausea": 0.5, "vomiting": 0.4, "abdominal_pain": 0.4},
     },
     "Dengue": {
         "specialization": "General Medicine", "urgency": "high",
