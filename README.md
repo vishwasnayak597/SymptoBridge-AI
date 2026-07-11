@@ -1,4 +1,5 @@
 # SymptoBridge AI — From Symptoms to the Right Specialist
+https://symptobridge-ai.onrender.com/
 
 A multi-specialty telemedicine platform: AI-powered symptom triage that routes patients to the
 right specialist, doctor discovery with geo-search, appointment booking, real-time video
