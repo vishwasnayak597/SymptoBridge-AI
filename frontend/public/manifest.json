@@ -1,0 +1,17 @@
+{
+  "name": "SymptoBridge AI",
+  "short_name": "SymptoBridge",
+  "description": "From symptoms to the right specialist — AI triage, doctor search, and video consultations.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FDF8F3",
+  "theme_color": "#E8765A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

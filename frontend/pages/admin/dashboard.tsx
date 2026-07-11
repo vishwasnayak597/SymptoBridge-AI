@@ -5,6 +5,7 @@ import { useAuthContext } from '../../components/AuthProvider';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import NotificationPanel from '../../components/NotificationPanel';
 import { apiClient } from '../../lib/api';
+import { useUnreadNotificationCount, useSetUnreadCount } from '../../hooks/useNotifications';
 import {
   UsersIcon,
   ChartBarIcon,
@@ -67,6 +68,8 @@ interface SystemAlert {
 
 const AdminDashboard: React.FC = () => {
   const { user, logout } = useAuthContext();
+  const notificationCount = useUnreadNotificationCount(!!user);
+  const setUnreadCount = useSetUnreadCount();
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'analytics' | 'system' | 'reports'>('overview');
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<PlatformStats>({
@@ -82,15 +85,14 @@ const AdminDashboard: React.FC = () => {
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
   const [userFilter, setUserFilter] = useState<'all' | 'doctors' | 'patients' | 'admin'>('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showUserModal, setShowUserModal] = useState(false);
 
+  // (notification count is handled by useUnreadNotificationCount)
   useEffect(() => {
     fetchDashboardData();
-    fetchNotificationCount();
     fetchSystemAlerts();
   }, []);
 
@@ -131,16 +133,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const fetchNotificationCount = async () => {
-    try {
-      const response = await apiClient.get('/notifications/unread-count');
-      if (response.data.success) {
-        setNotificationCount(response.data.data?.count || 0);
-      }
-    } catch (error) {
-      console.error('Error fetching notification count:', error);
-    }
-  };
 
   const fetchSystemAlerts = () => {
     // Mock system alerts
@@ -727,7 +719,7 @@ const AdminDashboard: React.FC = () => {
       <NotificationPanel
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
-        onUnreadCountChange={setNotificationCount}
+        onUnreadCountChange={setUnreadCount}
         onNotificationClick={(notification) => {
         }}
       />

@@ -8,6 +8,7 @@ import DoctorSearch from '../../components/DoctorSearch';
 import AppointmentBooking from '../../components/AppointmentBooking';
 import { apiClient } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
+import { useAppointments, useInvalidateAppointments } from '../../hooks/useAppointments';
 import {
   HeartIcon,
   MapPinIcon,
@@ -342,8 +343,12 @@ const PatientDashboard: React.FC = () => {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
   const [lastBookedAppointment, setLastBookedAppointment] = useState<any>(null);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [loading, setLoading] = useState(false);
+
+  // Appointments are server state: cached, persisted to IndexedDB, and
+  // refreshed by invalidation after writes (booking, rating) instead of
+  // manual refetch + loading-flag juggling.
+  const { appointments, isLoading: loading } = useAppointments<Appointment>(!!user);
+  const invalidateAppointments = useInvalidateAppointments();
   
   // New state for enhanced features
   const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
@@ -496,52 +501,24 @@ const PatientDashboard: React.FC = () => {
     }
   };
 
-  // Fetch appointments (wrapped in useCallback to prevent unnecessary re-renders)
-  const fetchAppointments = useCallback(async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get('/appointments');
-      if (response.data.success && response.data.data) {
-        const appointmentsData = response.data.data.appointments;
-        setAppointments(Array.isArray(appointmentsData) ? appointmentsData : []);
-      } else {
-        console.warn('Failed to fetch appointments:', response.data.message);
-        setAppointments([]);
-      }
-    } catch (error) {
-      console.error('Error fetching appointments:', error);
-      setAppointments([]); // Ensure appointments is always an array
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Consolidated useEffect with proper dependencies to prevent multiple calls
+  // Appointments load + refresh via useAppointments; medical data still manual.
   useEffect(() => {
     if (user) {
-      fetchAppointments();
       fetchMedicalData();
     }
-  }, [user, fetchAppointments, fetchMedicalData]);
+  }, [user, fetchMedicalData]);
 
   // Only fetch specific data when tab changes (to avoid redundant calls)
   useEffect(() => {
     if (!user) return;
-    
-    if (activeTab === 'appointments' || activeTab === 'overview') {
-      // Only refetch if we don't have data or if explicitly needed
-      if (appointments.length === 0) {
-        fetchAppointments();
-      }
-    }
-    
+
     if (activeTab === 'prescriptions' || activeTab === 'reports') {
       // Only refetch if we don't have data or if explicitly needed
       if (prescriptions.length === 0 && uploadedReports.length === 0) {
         fetchMedicalData();
       }
     }
-  }, [activeTab, user, appointments.length, prescriptions.length, uploadedReports.length, fetchAppointments, fetchMedicalData]);
+  }, [activeTab, user, prescriptions.length, uploadedReports.length, fetchMedicalData]);
 
   // Check for active video call invitations
   const isCheckingRef = useRef(false);
@@ -689,9 +666,9 @@ const PatientDashboard: React.FC = () => {
     setLastBookedAppointment(appointmentData);
     setBookingSuccess(true);
     setActiveTab('appointments');
-    
+
     // Refresh appointments list
-    fetchAppointments();
+    invalidateAppointments();
     
     // Show success message for a few seconds then hide
     setTimeout(() => setBookingSuccess(false), 5000);
@@ -755,7 +732,7 @@ const PatientDashboard: React.FC = () => {
   // AppointmentRating widget, which shows them inline.
   const handleSubmitRating = async (appointmentId: string, rating: number, review: string) => {
     await apiClient.post(`/appointments/${appointmentId}/rating`, { rating, review });
-    await fetchAppointments();
+    await invalidateAppointments();
   };
 
   const renderOverview = () => (

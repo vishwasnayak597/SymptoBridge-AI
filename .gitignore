@@ -53,7 +53,8 @@ dist/
 
 # Gatsby files
 .cache/
-public
+# NOTE: do not ignore "public" — frontend/public is Next.js source
+# (favicon, service worker, manifest), not a build output.
 
 # Storybook build outputs
 .out

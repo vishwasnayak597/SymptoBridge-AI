@@ -6,6 +6,7 @@ import { ProtectedRoute } from '../../components/ProtectedRoute';
 import NotificationPanel from '../../components/NotificationPanel';
 import DoctorScheduleCalendar from '../../components/DoctorScheduleCalendar';
 import { apiClient } from '../../lib/api';
+import { useUnreadNotificationCount, useSetUnreadCount } from '../../hooks/useNotifications';
 import {
   UsersIcon,
   CalendarDaysIcon,
@@ -81,6 +82,8 @@ const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'F
 
 const DoctorDashboard: React.FC = () => {
   const { user, logout } = useAuthContext();
+  const notificationCount = useUnreadNotificationCount(!!user);
+  const setUnreadCount = useSetUnreadCount();
   const [activeTab, setActiveTab] = useState<'overview' | 'appointments' | 'schedule' | 'patients' | 'profile'>('overview');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
@@ -93,7 +96,6 @@ const DoctorDashboard: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [showAppointmentModal, setShowAppointmentModal] = useState(false);
   const [modalType, setModalType] = useState<'details' | 'notes'>('details');
@@ -173,20 +175,6 @@ const DoctorDashboard: React.FC = () => {
       console.error('Error fetching patients:', error);
     } finally {
       setLoadingPatientData(false);
-    }
-  }, [user]);
-
-  // Fetch notification count with useCallback
-  const fetchNotificationCount = useCallback(async (): Promise<void> => {
-    if (!user) return;
-    
-    try {
-      const response = await apiClient.get('/notifications/unread-count');
-      if (response.data.success) {
-        setNotificationCount(response.data.data?.count || 0);
-      }
-    } catch (error) {
-      console.error('Error fetching notification count:', error);
     }
   }, [user]);
 
@@ -526,14 +514,14 @@ const DoctorDashboard: React.FC = () => {
   };
 
   // Fixed useEffect with proper dependencies to prevent multiple calls
+  // (notification count is handled by useUnreadNotificationCount)
   useEffect(() => {
     if (user) {
       fetchAppointments();
       fetchPatients();
-      fetchNotificationCount();
       fetchProfile();
     }
-  }, [user, fetchAppointments, fetchPatients, fetchNotificationCount, fetchProfile]);
+  }, [user, fetchAppointments, fetchPatients, fetchProfile]);
 
   // Add useEffect to fetch patient medical data when a patient is selected
   useEffect(() => {
@@ -1406,7 +1394,7 @@ const DoctorDashboard: React.FC = () => {
       <NotificationPanel
         isOpen={showNotifications}
         onClose={() => setShowNotifications(false)}
-        onUnreadCountChange={setNotificationCount}
+        onUnreadCountChange={setUnreadCount}
         onNotificationClick={(notification) => {
           // Handle notification click
         }}
