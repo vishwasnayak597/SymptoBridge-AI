@@ -46,8 +46,25 @@ export const queryClient = new QueryClient({
   },
 });
 
+const PERSIST_KEY = 'sb-query-cache';
+
 /** Persists the dehydrated query cache to IndexedDB (no-op during SSR). */
 export const queryPersister =
   typeof window !== 'undefined'
-    ? createAsyncStoragePersister({ storage: idbStorage, key: 'sb-query-cache' })
+    ? createAsyncStoragePersister({ storage: idbStorage, key: PERSIST_KEY })
     : undefined;
+
+/**
+ * Wipe all cached server state — in memory and in IndexedDB.
+ *
+ * Must be called on logout (and login) so one account never sees another's
+ * persisted appointments / notifications on a shared browser.
+ */
+export async function clearQueryCache(): Promise<void> {
+  queryClient.clear();
+  try {
+    await idbStorage.removeItem(PERSIST_KEY);
+  } catch {
+    // Best effort — the in-memory clear already protects the current session.
+  }
+}

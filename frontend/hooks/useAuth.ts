@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { User, ApiResponse } from '../../shared/types';
 import apiClient from '../lib/api';
 import { disconnectSocket } from '../lib/socket';
+import { clearQueryCache } from '../lib/queryClient';
 import toast from 'react-hot-toast';
 
 interface AuthTokens {
@@ -146,6 +147,9 @@ export const useAuth = (): UseAuthReturn => {
       if (response.data.success && response.data.data) {
         const { user: userData, accessToken } = response.data.data;
         setAccessToken(accessToken);
+        // Drop any cache from a previous session before the new user's
+        // queries run, so accounts never share persisted data.
+        await clearQueryCache();
         setUser(userData);
         toast.success('Login successful!');
         return true;
@@ -201,6 +205,7 @@ export const useAuth = (): UseAuthReturn => {
       clearAccessToken();
       disconnectSocket();
       setUser(null);
+      void clearQueryCache();
       toast.success('Logged out successfully');
     }
   }, [clearAccessToken]);
