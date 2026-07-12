@@ -3,25 +3,19 @@ import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useForm } from 'react-hook-form';
-import { yupResolver } from '@hookform/resolvers/yup';
-import * as yup from 'yup';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { EyeIcon, EyeSlashIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { useAuthContext } from '../../components/AuthProvider';
+// Same runtime schema the API validates against (shared/schemas.ts): the form
+// can never accept input the server would reject. The TS type is declared
+// explicitly because zod's z.infer needs strict mode, which this codebase
+// doesn't enable yet.
+import { loginSchema } from '../../../shared/schemas';
 
 interface LoginFormData {
   email: string;
   password: string;
 }
-
-const validationSchema = yup.object({
-  email: yup
-    .string()
-    .email('Please enter a valid email address')
-    .required('Email is required'),
-  password: yup
-    .string()
-    .required('Password is required'),
-}).required();
 
 /**
  * Login page component with beautiful UI
@@ -36,8 +30,8 @@ const LoginPage: React.FC = () => {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm({
-    resolver: yupResolver(validationSchema),
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
   });
 
   useEffect(() => {

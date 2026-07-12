@@ -3,6 +3,8 @@ import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { AuthService } from '../services/AuthService';
 import { authenticate, authorize } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { loginSchema, registerSchema } from '../../../shared/schemas';
 import { ApiResponse } from '../../../shared/types';
 import User from '../models/User'; // Added import for User model
 
@@ -38,63 +40,8 @@ const passwordResetLimiter = rateLimit({
   skip: (req) => process.env.NODE_ENV === 'development'
 });
 
-const validateRegistration = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Valid email is required'),
-  body('password')
-    .isLength({ min: 7 })
-    .withMessage('Password must be at least 7 characters long'),
-  body('confirmPassword')
-    .custom((value, { req }) => {
-      if (value !== req.body.password) {
-        throw new Error('Passwords do not match');
-      }
-      return true;
-    }),
-  body('firstName')
-    .trim()
-    .isLength({ min: 1, max: 50 })
-    .withMessage('First name is required and must be less than 50 characters'),
-  body('lastName')
-    .trim()
-    .isLength({ min: 1, max: 50 })
-    .withMessage('Last name is required and must be less than 50 characters'),
-  body('role')
-    .isIn(['patient', 'doctor', 'admin'])
-    .withMessage('Valid role is required'),
-  body('phone')
-    .optional()
-    .isMobilePhone('any')
-    .withMessage('Valid phone number is required'),
-  body('specialization')
-    .if(body('role').equals('doctor'))
-    .notEmpty()
-    .withMessage('Specialization is required for doctors'),
-  body('licenseNumber')
-    .if(body('role').equals('doctor'))
-    .notEmpty()
-    .withMessage('License number is required for doctors'),
-  body('experience')
-    .if(body('role').equals('doctor'))
-    .isNumeric()
-    .withMessage('Experience must be a number'),
-  body('consultationFee')
-    .if(body('role').equals('doctor'))
-    .isNumeric()
-    .withMessage('Consultation fee must be a number')
-];
-
-const validateLogin = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Valid email is required'),
-  body('password')
-    .notEmpty()
-    .withMessage('Password is required')
-];
+// Registration/login bodies are validated by the shared zod schemas
+// (shared/schemas.ts) — the same contracts the frontend forms use.
 
 const validatePasswordReset = [
   body('email')
@@ -124,19 +71,11 @@ const validateChangePassword = [
 /**
  * Register new user
  */
-router.post('/register', authLimiter, validateRegistration, async (req: Request, res: Response<ApiResponse>) => {
+router.post('/register', authLimiter, validate(registerSchema), async (req: Request, res: Response<ApiResponse>) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        data: errors.array()
-      });
-    }
-    
-    const { confirmPassword, ...registerData } = req.body;
-    const result = await AuthService.register(registerData);
+    // req.body is the parsed RegisterInput: trimmed, coerced, unknown keys
+    // (e.g. confirmPassword) already stripped by the schema.
+    const result = await AuthService.register(req.body);
     
     if (result.success && result.data) {
       res.cookie('refreshToken', result.data.tokens.refreshToken, {
@@ -168,17 +107,8 @@ router.post('/register', authLimiter, validateRegistration, async (req: Request,
 /**
  * Login user
  */
-router.post('/login', authLimiter, validateLogin, async (req: Request, res: Response<ApiResponse>) => {
+router.post('/login', authLimiter, validate(loginSchema), async (req: Request, res: Response<ApiResponse>) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        data: errors.array()
-      });
-    }
-    
     const result = await AuthService.login(req.body);
     
     if (result.success && result.data) {

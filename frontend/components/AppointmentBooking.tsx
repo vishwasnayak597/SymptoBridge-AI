@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   XMarkIcon,
   CalendarDaysIcon,
@@ -11,6 +11,7 @@ import {
   ChevronLeftIcon
 } from '@heroicons/react/24/outline';
 import { apiClient } from '../lib/api';
+import { newIdempotencyKey } from '../lib/idempotency';
 import PaymentProcessor from './PaymentProcessor';
 
 interface Doctor {
@@ -132,6 +133,11 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
     }
   }, [selectedDate, doctor.id]);
 
+  // One idempotency key per logical booking: retries (double-click, network
+  // timeout) replay the same booking server-side instead of creating a second
+  // appointment. Regenerated only after a booking succeeds.
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -165,11 +171,14 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
 
       
       // First create the appointment to get real ID
-      const response = await apiClient.post('/appointments', appointmentPayload);
+      const response = await apiClient.post('/appointments', appointmentPayload, {
+        headers: { 'Idempotency-Key': idempotencyKeyRef.current },
+      });
 
       if (response.data.success) {
         const createdAppointment = response.data.data;
-        
+        idempotencyKeyRef.current = newIdempotencyKey();
+
         setAppointmentData(appointmentPayload);
         setCreatedAppointmentId(createdAppointment._id || createdAppointment.id);
         setShowPayment(true);

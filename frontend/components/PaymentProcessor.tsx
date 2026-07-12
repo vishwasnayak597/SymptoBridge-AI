@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   CreditCardIcon,
   BanknotesIcon,
@@ -13,6 +13,7 @@ import {
   LockClosedIcon
 } from '@heroicons/react/24/outline';
 import { apiClient } from '../lib/api';
+import { newIdempotencyKey } from '../lib/idempotency';
 
 interface PaymentProcessorProps {
   appointmentId: string;
@@ -60,6 +61,9 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
     timestamp: new Date()
   });
   const [isProcessing, setIsProcessing] = useState(false);
+  // One key per logical payment; a retry replays the original charge instead
+  // of creating a second one. Regenerated only after the payment completes.
+  const idempotencyKeyRef = useRef<string>(newIdempotencyKey());
   const [showCardForm, setShowCardForm] = useState(false);
   const [showUpiForm, setShowUpiForm] = useState(false);
   const [upiId, setUpiId] = useState('');
@@ -182,7 +186,8 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
     });
 
     try {
-      // Create payment using apiClient to route to backend
+      // Create payment using apiClient to route to backend. The Idempotency-Key
+      // guarantees a retry (double-click, timeout) can never double-charge.
       const createResponse = await apiClient.post('/payments', {
         appointmentId,
         doctorId,
@@ -196,6 +201,8 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
           totalAmountPaid: calculateTotalAmount(), // Track total amount in metadata
           paymentMethodName: selectedMethod.name
         }
+      }, {
+        headers: { 'Idempotency-Key': idempotencyKeyRef.current },
       });
 
       if (!createResponse.data.success) {
@@ -235,6 +242,7 @@ const PaymentProcessor: React.FC<PaymentProcessorProps> = ({
         const processData = processResponse.data;
         
         if (processData.data.status === 'completed') {
+          idempotencyKeyRef.current = newIdempotencyKey();
           setPaymentStatus({
             status: 'completed',
             message: 'Payment completed successfully!',

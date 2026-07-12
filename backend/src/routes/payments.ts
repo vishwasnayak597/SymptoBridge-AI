@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import { PaymentService, PaymentRequest, RefundRequest } from '../services/PaymentService';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { idempotent } from '../middleware/idempotency';
+import { createPaymentSchema } from '../../../shared/schemas';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -12,20 +15,8 @@ interface ApiResponse<T = any> {
 
 const router = Router();
 
-router.post('/', [
-  authenticate,
-  body('appointmentId').notEmpty().isMongoId(),
-  body('doctorId').notEmpty().isMongoId(),
-  body('amount').isFloat({ min: 0 }),
-  body('paymentMethod').isIn(['credit_card', 'debit_card', 'upi', 'wallet', 'net_banking', 'cash']),
-  body('paymentGateway').isIn(['stripe', 'razorpay', 'paypal', 'cash'])
-], async (req: Request, res: Response) => {
+router.post('/', authenticate, validate(createPaymentSchema), idempotent('payment'), async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array().map(err => err.msg).join(', ') });
-    }
-
     // Get appointment to fetch the correct patient ID
     const appointment = await PaymentService.getAppointmentForPayment(req.body.appointmentId);
     if (!appointment) {

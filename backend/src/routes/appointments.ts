@@ -2,6 +2,9 @@ import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
 import { AppointmentService, CreateAppointmentRequest, PrescriptionData, RatingData } from '../services/AppointmentService';
 import { authenticate } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { idempotent } from '../middleware/idempotency';
+import { createAppointmentSchema, appointmentRatingSchema } from '../../../shared/schemas';
 import mongoose from 'mongoose';
 import {Appointment} from '../models/Appointment';
 
@@ -14,21 +17,8 @@ interface ApiResponse<T = any> {
 
 const router = Router();
 
-router.post('/', [
-  authenticate,
-  body('doctorId').notEmpty().isMongoId(),
-  body('appointmentDate').notEmpty().isISO8601(),
-  body('consultationType').isIn(['in-person', 'video', 'phone']),
-  body('symptoms').isLength({ min: 10, max: 1000 }),
-  body('specialization').notEmpty(),
-  body('fee').isFloat({ min: 0 })
-], async (req: Request, res: Response) => {
+router.post('/', authenticate, validate(createAppointmentSchema), idempotent('appointment'), async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array().map(err => err.msg).join(', ') });
-    }
-
     const appointmentData: CreateAppointmentRequest = {
       patientId: req.user!._id.toString(),
       doctorId: req.body.doctorId,
@@ -218,17 +208,8 @@ router.post('/:id/prescription', [
   }
 });
 
-router.post('/:id/rating', [
-  authenticate,
-  param('id').isMongoId(),
-  body('rating').isInt({ min: 1, max: 5 })
-], async (req: Request, res: Response) => {
+router.post('/:id/rating', authenticate, validate(appointmentRatingSchema), async (req: Request, res: Response) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, error: errors.array().map(err => err.msg).join(', ') });
-    }
-
     const ratingData: RatingData = {
       rating: req.body.rating,
       review: req.body.review
