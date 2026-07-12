@@ -9,6 +9,14 @@ import AppointmentBooking from '../../components/AppointmentBooking';
 import { apiClient } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
 import { useAppointments, useInvalidateAppointments } from '../../hooks/useAppointments';
+import AppointmentsList from '../../features/appointments/AppointmentsList';
+import { Appointment } from '../../features/appointments/types';
+import { formatAppointmentDate, getStatusColor } from '../../features/appointments/utils';
+import PrescriptionsList from '../../features/prescriptions/PrescriptionsList';
+import { usePrescriptions } from '../../features/prescriptions/usePrescriptions';
+import ReportsPanel from '../../features/reports/ReportsPanel';
+import { useReports } from '../../features/reports/useReports';
+import RemindersList, { Reminder } from '../../features/reminders/RemindersList';
 import {
   HeartIcon,
   MapPinIcon,
@@ -34,7 +42,6 @@ import {
   ChartBarIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
-import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 
 type TabType = 'overview' | 'symptom-checker' | 'find-doctors' | 'appointments' | 'prescriptions' | 'reminders' | 'reports';
 
@@ -53,159 +60,8 @@ interface Doctor {
   };
 }
 
-interface Appointment {
-  _id: string;
-  doctor: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    specialization: string;
-    consultationFee: number;
-    avatar?: string;
-  };
-  appointmentDate: string;
-  consultationType: string;
-  symptoms: string;
-  status: string;
-  fee: number;
-  videoCallLink?: string;
-  createdAt: string;
-  rating?: {
-    patientRating?: number;
-    patientReview?: string;
-    doctorRating?: number;
-    doctorReview?: string;
-  };
-}
-
-interface Prescription {
-  id: string;
-  date: string;
-  doctorName: string;
-  medications: {
-    name: string;
-    dosage: string;
-    frequency: string;
-    duration: string;
-    instructions: string;
-  }[];
-  diagnosis: string;
-  nextFollowUp?: string;
-}
-
-interface UploadedReport {
-  id: string;
-  title: string;
-  fileName: string;
-  type: 'blood_test' | 'xray' | 'mri' | 'ct_scan' | 'ultrasound' | 'lab_report' | 'prescription' | 'discharge_summary' | 'other';
-  uploadDate: string;
-  fileSize: number;
-  description?: string;
-  status: 'pending' | 'reviewed' | 'archived';
-  mimeType: string;
-  patient: string;
-  uploadedBy: {
-    firstName: string;
-    lastName: string;
-    role: string;
-  };
-}
-
-interface Reminder {
-  id: string;
-  type: 'appointment' | 'medication' | 'checkup' | 'test';
-  title: string;
-  description: string;
-  dueDate: string;
-  priority: 'high' | 'medium' | 'low';
-  completed: boolean;
-}
 
 // Dummy data
-const dummyPrescriptions: Prescription[] = [
-  {
-    id: '1',
-    date: '2025-08-15',
-    doctorName: 'Dr. Sarah Wilson',
-    medications: [
-      {
-        name: 'Lisinopril',
-        dosage: '10mg',
-        frequency: 'Once daily',
-        duration: '3 months',
-        instructions: 'Take in the morning with food. Monitor blood pressure regularly.'
-      },
-      {
-        name: 'Aspirin',
-        dosage: '81mg',
-        frequency: 'Once daily',
-        duration: 'Ongoing',
-        instructions: 'Take with food to prevent stomach upset. Low-dose for heart protection.'
-      }
-    ],
-    diagnosis: 'Hypertension',
-    nextFollowUp: '2025-11-15'
-  },
-  {
-    id: '2',
-    date: '2025-07-20',
-    doctorName: 'Dr. Michael Chen',
-    medications: [
-      {
-        name: 'Vitamin D3',
-        dosage: '2000 IU',
-        frequency: 'Once daily',
-        duration: '6 months',
-        instructions: 'Take with largest meal of the day for better absorption.'
-      }
-    ],
-    diagnosis: 'Vitamin D Deficiency',
-    nextFollowUp: '2025-10-20'
-  }
-];
-
-const dummyUploadedReports: UploadedReport[] = [
-  {
-    id: '1',
-    title: 'Blood Test Results - CBC',
-    fileName: 'cbc_report.pdf',
-    type: 'blood_test',
-    uploadDate: '2025-08-10',
-    fileSize: 2100000,
-    description: 'Complete blood count report for August 2025',
-    status: 'reviewed',
-    mimeType: 'application/pdf',
-    patient: 'patient123',
-    uploadedBy: { firstName: 'John', lastName: 'Doe', role: 'patient' }
-  },
-  {
-    id: '2',
-    title: 'Chest X-Ray',
-    fileName: 'chest_xray.jpg',
-    type: 'xray',
-    uploadDate: '2025-07-25',
-    fileSize: 5800000,
-    description: 'Chest X-Ray for suspected pneumonia',
-    status: 'pending',
-    mimeType: 'image/jpeg',
-    patient: 'patient123',
-    uploadedBy: { firstName: 'Jane', lastName: 'Smith', role: 'patient' }
-  },
-  {
-    id: '3',
-    title: 'ECG Report',
-    fileName: 'ecg_report.pdf',
-    type: 'other',
-    uploadDate: '2025-08-15',
-    fileSize: 1300000,
-    description: 'Electrocardiogram report for patient monitoring',
-    status: 'archived',
-    mimeType: 'application/pdf',
-    patient: 'patient123',
-    uploadedBy: { firstName: 'John', lastName: 'Doe', role: 'patient' }
-  }
-];
-
 const dummyReminders: Reminder[] = [
   {
     id: '1',
@@ -240,101 +96,6 @@ const dummyReminders: Reminder[] = [
  * Patient Dashboard with AI Symptom Checker and Doctor Search
  */
 /** Interactive 1–5 star selector; read-only when `onChange` is omitted. */
-const StarRating: React.FC<{
-  value: number;
-  onChange?: (value: number) => void;
-}> = ({ value, onChange }) => {
-  const [hover, setHover] = useState(0);
-  const readOnly = !onChange;
-  return (
-    <div className="flex items-center space-x-1">
-      {[1, 2, 3, 4, 5].map((star) => {
-        const filled = (hover || value) >= star;
-        return (
-          <button
-            key={star}
-            type="button"
-            disabled={readOnly}
-            onMouseEnter={() => !readOnly && setHover(star)}
-            onMouseLeave={() => !readOnly && setHover(0)}
-            onClick={() => onChange?.(star)}
-            aria-label={`${star} star${star > 1 ? 's' : ''}`}
-            className={readOnly ? 'cursor-default' : 'cursor-pointer'}
-          >
-            {filled
-              ? <StarIconSolid className="h-6 w-6 text-yellow-400" />
-              : <StarIcon className="h-6 w-6 text-gray-300" />}
-          </button>
-        );
-      })}
-    </div>
-  );
-};
-
-/** Lets a patient rate a completed consultation, or shows the rating already left. */
-const AppointmentRating: React.FC<{
-  appointment: Appointment;
-  onSubmit: (appointmentId: string, rating: number, review: string) => Promise<void>;
-}> = ({ appointment, onSubmit }) => {
-  const existingRating = appointment.rating?.patientRating;
-  const [rating, setRating] = useState(0);
-  const [review, setReview] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  if (existingRating) {
-    return (
-      <div className="mt-4 pt-4 border-t border-gray-100">
-        <p className="text-sm font-medium text-gray-700 mb-1">Your rating</p>
-        <div className="flex items-center space-x-2">
-          <StarRating value={existingRating} />
-          {appointment.rating?.patientReview && (
-            <span className="text-sm text-gray-500 italic">&ldquo;{appointment.rating.patientReview}&rdquo;</span>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  const handleSubmit = async () => {
-    if (rating < 1) {
-      setError('Please select a star rating.');
-      return;
-    }
-    setError('');
-    setSubmitting(true);
-    try {
-      await onSubmit(appointment._id, rating, review.trim());
-    } catch (err: any) {
-      setError(err?.response?.data?.error || 'Could not submit your rating. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="mt-4 pt-4 border-t border-gray-100">
-      <p className="text-sm font-medium text-gray-700 mb-2">Rate your consultation</p>
-      <StarRating value={rating} onChange={setRating} />
-      <textarea
-        value={review}
-        onChange={(e) => setReview(e.target.value)}
-        placeholder="Share your experience (optional)"
-        rows={2}
-        className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coral-500"
-      />
-      {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={rating < 1 || submitting}
-        className="mt-2 btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {submitting ? 'Submitting…' : 'Submit Rating'}
-      </button>
-    </div>
-  );
-};
 
 const PatientDashboard: React.FC = () => {
   const { user, logout } = useAuthContext();
@@ -350,22 +111,11 @@ const PatientDashboard: React.FC = () => {
   const { appointments, isLoading: loading } = useAppointments<Appointment>(!!user);
   const invalidateAppointments = useInvalidateAppointments();
   
-  // New state for enhanced features
-  const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
-  const [uploadedReports, setUploadedReports] = useState<UploadedReport[]>([]);
+  // Prescriptions and reports are owned by their feature hooks; the overview
+  // only needs counts/previews, and React Query dedupes with the tab panels.
+  const { prescriptions } = usePrescriptions(!!user);
+  const { reports: uploadedReports } = useReports(!!user);
   const [reminders, setReminders] = useState<Reminder[]>(dummyReminders);
-  const [uploadingReport, setUploadingReport] = useState(false);
-  const [loadingData, setLoadingData] = useState(false);
-  
-  // State for reports upload form (moved from renderReports to fix hooks rule violation)
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    type: 'blood_test',
-    description: '',
-    reportDate: ''
-  });
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [recommendedSpecializations, setRecommendedSpecializations] = useState<string[]>([]);
 
   // Add state for active video call notifications
@@ -373,152 +123,7 @@ const PatientDashboard: React.FC = () => {
   const videoCallTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
 
-  // Fetch real data from APIs (wrapped in useCallback to prevent unnecessary re-renders)
-  const fetchMedicalData = useCallback(async () => {
-    if (!user) return;
-    
-    try {
-      setLoadingData(true);
-      
-      // Fetch prescriptions and reports in parallel
-      const [prescriptionsRes, reportsRes] = await Promise.all([
-        apiClient.get('/prescriptions/my-prescriptions'),
-        apiClient.get('/reports/my-reports')
-      ]);
 
-      if (prescriptionsRes.data.success) {
-        setPrescriptions(prescriptionsRes.data.data);
-      }
-
-      if (reportsRes.data.success) {
-        setUploadedReports(reportsRes.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching medical data:', error);
-    } finally {
-      setLoadingData(false);
-    }
-  }, [user]);
-
-  // Add new report upload function with real file upload
-  const handleUploadReport = async (file: File, reportData: {
-    title: string;
-    type: string;
-    description?: string;
-    reportDate?: string;
-  }) => {
-    try {
-      setUploadingReport(true);
-      
-
-      
-      const formData = new FormData();
-      formData.append('report', file);
-      formData.append('title', reportData.title);
-      formData.append('type', reportData.type);
-      if (reportData.description) {
-        formData.append('description', reportData.description);
-      }
-      if (reportData.reportDate) {
-        formData.append('reportDate', reportData.reportDate);
-      }
-
-
-      
-      const response = await apiClient.post('/reports/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-
-
-      if (response.data.success) {
-        // Add the new report to the list
-        setUploadedReports(prev => [response.data.data, ...prev]);
-        return { success: true, data: response.data.data };
-      } else {
-        throw new Error(response.data.message || 'Upload failed');
-      }
-    } catch (error) {
-      console.error('❌ Error uploading report:', error);
-      console.error('📊 Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-        statusText: error.response?.statusText,
-        config: error.config
-      });
-      
-      if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      } else if (error.response?.status === 401) {
-        throw new Error('Authentication failed. Please log in again.');
-      } else if (error.response?.status === 413) {
-        throw new Error('File too large. Maximum size is 10MB.');
-      } else if (error.message.includes('Invalid file type')) {
-        throw new Error('Invalid file type. Only images, PDFs, and documents are allowed.');
-      } else if (error.code === 'NETWORK_ERROR') {
-        throw new Error('Network error. Please check your connection and try again.');
-      }
-      throw error;
-    } finally {
-      setUploadingReport(false);
-    }
-  };
-
-  // Download a report through the authenticated API client (window.open cannot send auth headers)
-  const handleDownloadReport = async (reportId: string, fileName: string) => {
-    try {
-      const response = await apiClient.get(`/reports/${reportId}/download`, {
-        responseType: 'blob',
-      });
-
-      const url = window.URL.createObjectURL(new Blob([response.data as unknown as BlobPart]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName || 'report');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error downloading report:', error);
-      alert('Failed to download report. Please try again.');
-    }
-  };
-
-  // Remove report function
-  const handleRemoveReport = async (reportId: string) => {
-    try {
-      const response = await apiClient.delete(`/reports/${reportId}`);
-      
-      if (response.data.success) {
-        setUploadedReports(prev => prev.filter(report => report.id !== reportId));
-      }
-    } catch (error) {
-      console.error('Error removing report:', error);
-    }
-  };
-
-  // Appointments load + refresh via useAppointments; medical data still manual.
-  useEffect(() => {
-    if (user) {
-      fetchMedicalData();
-    }
-  }, [user, fetchMedicalData]);
-
-  // Only fetch specific data when tab changes (to avoid redundant calls)
-  useEffect(() => {
-    if (!user) return;
-
-    if (activeTab === 'prescriptions' || activeTab === 'reports') {
-      // Only refetch if we don't have data or if explicitly needed
-      if (prescriptions.length === 0 && uploadedReports.length === 0) {
-        fetchMedicalData();
-      }
-    }
-  }, [activeTab, user, prescriptions.length, uploadedReports.length, fetchMedicalData]);
 
   // Check for active video call invitations
   const isCheckingRef = useRef(false);
@@ -679,61 +284,6 @@ const PatientDashboard: React.FC = () => {
     setSelectedDoctor(null);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'scheduled':
-      case 'confirmed':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-green-100 text-green-800';
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const canJoinVideoCall = (appointment: Appointment) => {
-    const appointmentTime = new Date(appointment.appointmentDate);
-    const now = new Date();
-    const timeDiff = appointmentTime.getTime() - now.getTime();
-    const minutesDiff = Math.floor(timeDiff / (1000 * 60));
-    
-    // Allow joining 10 minutes before appointment time and until 30 minutes after
-    return minutesDiff <= 10 && minutesDiff >= -30 && appointment.status === 'confirmed';
-  };
-
-  const handleJoinVideoCall = (appointment: Appointment) => {
-    if (appointment.videoCallLink) {
-      window.location.href = appointment.videoCallLink;
-    } else {
-      // Generate video call link if not exists (using URL parameters)
-      const callLink = `/video-call?id=${appointment._id}`;
-      window.location.href = callLink;
-    }
-  };
-
-  // Submit a patient rating for a completed appointment, then refresh so the
-  // card flips to the read-only "Your rating" view. Errors propagate to the
-  // AppointmentRating widget, which shows them inline.
-  const handleSubmitRating = async (appointmentId: string, rating: number, review: string) => {
-    await apiClient.post(`/appointments/${appointmentId}/rating`, { rating, review });
-    await invalidateAppointments();
-  };
 
   const renderOverview = () => (
     <div className="space-y-8">
@@ -907,7 +457,7 @@ const PatientDashboard: React.FC = () => {
                             {appointment.status}
                           </span>
                           <p className="text-xs text-gray-500 mt-1">
-                            {formatDate(appointment.appointmentDate).split(',')[0]}
+                            {formatAppointmentDate(appointment.appointmentDate).split(',')[0]}
                           </p>
                         </div>
                       </div>
@@ -1024,458 +574,7 @@ const PatientDashboard: React.FC = () => {
     </div>
   );
 
-  const renderAppointments = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">My Appointments</h2>
-        <button
-          onClick={() => setActiveTab('find-doctors')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <PlusIcon className="h-4 w-4 inline mr-2" />
-          Book New Appointment
-        </button>
-      </div>
 
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      ) : appointments.length === 0 ? (
-        <div className="text-center py-12">
-          <CalendarDaysIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-lg font-medium text-gray-900">No appointments yet</h3>
-          <p className="mt-2 text-gray-500">Book your first appointment with a doctor</p>
-          <button
-            onClick={() => setActiveTab('find-doctors')}
-            className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Find Doctors
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {appointments.map((appointment) => (
-            <div key={appointment._id} className="bg-white rounded-lg shadow border p-6">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3">
-                    <div className="flex-shrink-0">
-                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <span className="text-blue-600 font-medium">
-                          {appointment.doctor?.firstName?.charAt(0) || 'D'}{appointment.doctor?.lastName?.charAt(0) || 'R'}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-medium text-gray-900">
-                        Dr. {appointment.doctor?.firstName || 'Unknown'} {appointment.doctor?.lastName || 'Doctor'}
-                      </h3>
-                      <p className="text-sm text-gray-500">{appointment.doctor?.specialization || 'General Medicine'}</p>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Date & Time</p>
-                      <p className="text-sm text-gray-600">{formatDate(appointment.appointmentDate)}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Consultation Type</p>
-                      <p className="text-sm text-gray-600 capitalize">{appointment.consultationType}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Symptoms</p>
-                      <p className="text-sm text-gray-600">{appointment.symptoms}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-gray-700">Fee</p>
-                      <p className="text-sm text-gray-600">₹{appointment.fee}</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex flex-col items-end space-y-2">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(appointment.status)}`}>
-                    {appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                  </span>
-                  
-                  {appointment.consultationType === 'video' && canJoinVideoCall(appointment) && (
-                    <button
-                      onClick={() => handleJoinVideoCall(appointment)}
-                      className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-1"
-                    >
-                      <VideoCameraIcon className="h-4 w-4" />
-                      <span>Join Call</span>
-                    </button>
-                  )}
-                  
-                  {appointment.consultationType === 'video' && !canJoinVideoCall(appointment) && appointment.status === 'confirmed' && (
-                    <p className="text-xs text-gray-500">Call available 10 min before</p>
-                  )}
-                </div>
-              </div>
-
-              {appointment.status === 'completed' && (
-                <AppointmentRating appointment={appointment} onSubmit={handleSubmitRating} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderPrescriptions = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Prescriptions</h2>
-          <p className="text-gray-600">Your current and past prescriptions</p>
-        </div>
-        <button
-          onClick={() => setActiveTab('find-doctors')}
-          className="btn-primary flex items-center"
-        >
-          <PlusIcon className="h-4 w-4 mr-2" />
-          Get New Prescription
-        </button>
-      </div>
-
-      {prescriptions.length === 0 ? (
-        <div className="text-center py-12">
-          <DocumentTextIcon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">No prescriptions yet</h3>
-          <p className="text-gray-600 mb-6">
-            Your prescriptions from consultations will appear here
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {prescriptions.map((prescription) => (
-            <div key={prescription.id} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">{prescription.diagnosis}</h3>
-                  <p className="text-sm text-gray-600">Prescribed by {prescription.doctorName}</p>
-                  <p className="text-sm text-gray-500">Date: {new Date(prescription.date).toLocaleDateString()}</p>
-                </div>
-                <div className="text-right">
-                  {prescription.nextFollowUp && (
-                    <div className="text-sm text-orange-600 bg-orange-50 px-3 py-1 rounded-full">
-                      Follow-up: {new Date(prescription.nextFollowUp).toLocaleDateString()}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {prescription.medications.map((medication, index) => (
-                  <div key={index} className="border-l-4 border-blue-200 bg-blue-50 p-4 rounded-r-lg">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 text-lg">{medication.name}</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 text-sm">
-                          <div>
-                            <span className="font-medium text-gray-700">Dosage:</span>
-                            <span className="ml-2 text-gray-900">{medication.dosage}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Frequency:</span>
-                            <span className="ml-2 text-gray-900">{medication.frequency}</span>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">Duration:</span>
-                            <span className="ml-2 text-gray-900">{medication.duration}</span>
-                          </div>
-                        </div>
-                        <div className="mt-3">
-                          <span className="font-medium text-gray-700">Instructions:</span>
-                          <p className="text-gray-900 mt-1">{medication.instructions}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderReports = () => {
-    const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      if (file) {
-        // Check file size (10MB limit)
-        if (file.size > 10 * 1024 * 1024) {
-          alert('File size must be less than 10MB');
-          return;
-        }
-        
-        // Check file type
-        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf'];
-        if (!allowedTypes.includes(file.type)) {
-          alert('Invalid file type. Only images and PDFs are allowed.');
-          return;
-        }
-        
-        setSelectedFile(file);
-        setUploadForm(prev => ({
-          ...prev,
-          title: prev.title || file.name.split('.')[0]
-        }));
-      }
-    };
-
-    const handleUploadSubmit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      
-      if (!selectedFile) {
-        alert('Please select a file');
-        return;
-      }
-
-      if (!uploadForm.title.trim()) {
-        alert('Please enter a title');
-        return;
-      }
-
-      try {
-        await handleUploadReport(selectedFile, uploadForm);
-        
-        // Reset form
-        setSelectedFile(null);
-        setUploadForm({
-          title: '',
-          type: 'blood_test',
-          description: '',
-          reportDate: ''
-        });
-        setShowUploadForm(false);
-        
-        alert('Report uploaded successfully!');
-      } catch (error) {
-        alert('Failed to upload report. Please try again.');
-      }
-    };
-
-    return (
-      <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Medical Reports</h2>
-            <p className="text-gray-600">Upload and manage your medical reports and test results</p>
-          </div>
-          <button
-            onClick={() => setShowUploadForm(!showUploadForm)}
-            className="btn-primary flex items-center"
-            disabled={uploadingReport}
-          >
-            <DocumentArrowUpIcon className="h-4 w-4 mr-2" />
-            {uploadingReport ? 'Uploading...' : 'Upload Report'}
-          </button>
-        </div>
-
-        {/* Upload Form */}
-        {showUploadForm && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-            <form onSubmit={handleUploadSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select File *
-                </label>
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.gif"
-                  onChange={handleFileSelect}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  required
-                />
-                {selectedFile && (
-                  <p className="text-sm text-green-600 mt-1">
-                    Selected: {selectedFile.name} ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Report Title *
-                  </label>
-                  <input
-                    type="text"
-                    value={uploadForm.title}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                    className="input-field"
-                    placeholder="e.g., Blood Test Report"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Report Type *
-                  </label>
-                  <select
-                    value={uploadForm.type}
-                    onChange={(e) => setUploadForm(prev => ({ ...prev, type: e.target.value }))}
-                    className="input-field"
-                    required
-                  >
-                    <option value="blood_test">Blood Test</option>
-                    <option value="xray">X-Ray</option>
-                    <option value="mri">MRI Scan</option>
-                    <option value="ct_scan">CT Scan</option>
-                    <option value="ultrasound">Ultrasound</option>
-                    <option value="lab_report">Lab Report</option>
-                    <option value="prescription">Prescription</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Report Date
-                </label>
-                <input
-                  type="date"
-                  value={uploadForm.reportDate}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, reportDate: e.target.value }))}
-                  className="input-field"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={uploadForm.description}
-                  onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                  className="input-field"
-                  rows={3}
-                  placeholder="Optional notes about this report"
-                />
-              </div>
-
-              <div className="flex justify-end space-x-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUploadForm(false);
-                    setSelectedFile(null);
-                    setUploadForm({
-                      title: '',
-                      type: 'blood_test',
-                      description: '',
-                      reportDate: ''
-                    });
-                  }}
-                  className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={uploadingReport || !selectedFile}
-                  className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {uploadingReport ? 'Uploading...' : 'Upload Report'}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* Uploaded Reports */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Uploaded Reports ({uploadedReports.length})
-            {loadingData && <span className="text-sm text-gray-500 ml-2">(Loading...)</span>}
-          </h3>
-          
-          {loadingData ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="text-gray-600 mt-2">Loading reports...</p>
-            </div>
-          ) : uploadedReports.length === 0 ? (
-            <div className="text-center py-8">
-              <PhotoIcon className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600">No reports uploaded yet</p>
-              <button
-                onClick={() => setShowUploadForm(true)}
-                className="text-blue-600 hover:text-blue-800 text-sm mt-2"
-              >
-                Upload your first report
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uploadedReports.map((report) => (
-                <div key={report.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className={`p-2 rounded-lg ${
-                      report.type === 'blood_test' ? 'bg-red-100 text-red-600' :
-                      report.type === 'xray' ? 'bg-blue-100 text-blue-600' :
-                      report.type === 'mri' ? 'bg-purple-100 text-purple-600' :
-                      report.type === 'ct_scan' ? 'bg-green-100 text-green-600' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {report.type === 'blood_test' ? <BeakerIcon className="h-5 w-5" /> :
-                       report.type === 'xray' ? <PhotoIcon className="h-5 w-5" /> :
-                       <DocumentTextIcon className="h-5 w-5" />}
-                    </div>
-                    <div className="flex space-x-2">
-                      <button 
-                        onClick={() => handleDownloadReport(report.id, report.fileName)}
-                        className="p-1 text-gray-400 hover:text-green-600 transition-colors"
-                        title="Download"
-                      >
-                        <ArrowDownTrayIcon className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleRemoveReport(report.id)}
-                        className="p-1 text-red-400 hover:text-red-600 transition-colors"
-                        title="Delete"
-                      >
-                        <ExclamationTriangleIcon className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <h4 className="font-medium text-gray-900 text-sm mb-1">
-                    {report.title || report.fileName}
-                  </h4>
-                  <p className="text-xs text-gray-600 mb-2">
-                    {new Date(report.uploadDate).toLocaleDateString()}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {((report.fileSize || 0) / (1024 * 1024)).toFixed(2)} MB
-                  </p>
-                  
-                  <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full mt-2 ${
-                    (report.type || 'general') === 'blood_test' ? 'bg-red-100 text-red-800' :
-                    (report.type || 'general') === 'xray' ? 'bg-blue-100 text-blue-800' :
-                    (report.type || 'general') === 'mri' ? 'bg-purple-100 text-purple-800' :
-                    (report.type || 'general') === 'ct_scan' ? 'bg-green-100 text-green-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {(report.type || 'general').replace('_', ' ').toUpperCase()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   const toggleReminder = (id: string) => {
     setReminders(prev => prev.map(reminder => 
@@ -1483,113 +582,6 @@ const PatientDashboard: React.FC = () => {
     ));
   };
 
-  const renderReminders = () => (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Appointment Reminders</h2>
-          <p className="text-gray-600">Stay on top of your health appointments and medication schedules</p>
-        </div>
-        <button
-          onClick={() => setActiveTab('appointments')}
-          className="btn-primary flex items-center"
-        >
-          <CalendarDaysIcon className="h-4 w-4 mr-2" />
-          View Appointments
-        </button>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Urgent Reminders */}
-        <div className="lg:col-span-2">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Reminders</h3>
-          <div className="space-y-3">
-            {reminders.filter(r => !r.completed).map((reminder) => (
-              <div key={reminder.id} className={`p-4 rounded-lg border-l-4 ${
-                reminder.priority === 'high' ? 'border-red-400 bg-red-50' :
-                reminder.priority === 'medium' ? 'border-yellow-400 bg-yellow-50' :
-                'border-green-400 bg-green-50'
-              }`}>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-2">
-                      <div className={`p-1 rounded-full ${
-                        reminder.type === 'appointment' ? 'bg-blue-100 text-blue-600' :
-                        reminder.type === 'medication' ? 'bg-purple-100 text-purple-600' :
-                        reminder.type === 'test' ? 'bg-green-100 text-green-600' :
-                        'bg-orange-100 text-orange-600'
-                      }`}>
-                        {reminder.type === 'appointment' ? <CalendarDaysIcon className="h-4 w-4" /> :
-                         reminder.type === 'medication' ? <DocumentTextIcon className="h-4 w-4" /> :
-                         reminder.type === 'test' ? <BeakerIcon className="h-4 w-4" /> :
-                         <ClockIcon className="h-4 w-4" />}
-                      </div>
-                      <h4 className="font-semibold text-gray-900">{reminder.title}</h4>
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                        reminder.priority === 'high' ? 'bg-red-100 text-red-800' :
-                        reminder.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        {reminder.priority.toUpperCase()}
-                      </span>
-                    </div>
-                    
-                    <p className="text-gray-700 text-sm mb-2">{reminder.description}</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      Due: {new Date(reminder.dueDate).toLocaleDateString()}
-                    </p>
-                  </div>
-                  
-                  <button
-                    onClick={() => toggleReminder(reminder.id)}
-                    className="ml-4 p-2 text-gray-400 hover:text-green-600 transition-colors"
-                  >
-                    <CheckCircleIcon className="h-5 w-5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Completed Reminders */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">
-            Completed ({reminders.filter(r => r.completed).length})
-          </h3>
-          <div className="space-y-2">
-            {reminders.filter(r => r.completed).map((reminder) => (
-              <div key={reminder.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200 opacity-75">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium text-gray-900 text-sm line-through">{reminder.title}</h4>
-                    <p className="text-gray-600 text-xs">{new Date(reminder.dueDate).toLocaleDateString()}</p>
-                  </div>
-                  <CheckCircleIcon className="h-5 w-5 text-green-600" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Health Tips */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-        <div className="flex items-start space-x-4">
-          <div className="p-2 bg-blue-100 rounded-lg">
-            <SparklesIcon className="h-6 w-6 text-blue-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Health Tip of the Day</h3>
-            <p className="text-gray-700">
-              Regular monitoring of blood pressure is crucial for cardiovascular health. 
-              Keep track of your readings and share them with your doctor during consultations.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   // Video Call Invitation Banner
   const renderVideoCallInvitation = () => {
@@ -1703,7 +695,7 @@ const PatientDashboard: React.FC = () => {
         </header>
 
         {/* Navigation Tabs */}
-        <nav className="bg-white border-b">
+        <nav className="bg-white border-b" aria-label="Dashboard sections">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex space-x-8 overflow-x-auto">
               {[
@@ -1720,6 +712,7 @@ const PatientDashboard: React.FC = () => {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
+                    aria-current={activeTab === tab.id ? 'page' : undefined}
                     className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
                       activeTab === tab.id
                         ? 'border-blue-500 text-blue-600'
@@ -1750,10 +743,27 @@ const PatientDashboard: React.FC = () => {
               recommendedSpecializations={recommendedSpecializations}
             />
           )}
-          {activeTab === 'appointments' && renderAppointments()}
-          {activeTab === 'prescriptions' && renderPrescriptions()}
-          {activeTab === 'reports' && renderReports()}
-          {activeTab === 'reminders' && renderReminders()}
+          {activeTab === 'appointments' && (
+            <AppointmentsList
+              appointments={appointments}
+              loading={loading}
+              onBookNew={() => setActiveTab('find-doctors')}
+            />
+          )}
+          {activeTab === 'prescriptions' && (
+            <PrescriptionsList
+              prescriptions={prescriptions}
+              onRequestNew={() => setActiveTab('find-doctors')}
+            />
+          )}
+          {activeTab === 'reports' && <ReportsPanel />}
+          {activeTab === 'reminders' && (
+            <RemindersList
+              reminders={reminders}
+              onToggle={toggleReminder}
+              onViewAppointments={() => setActiveTab('appointments')}
+            />
+          )}
         </main>
       </div>
 

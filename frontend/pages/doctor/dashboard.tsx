@@ -1334,6 +1334,7 @@ const DoctorDashboard: React.FC = () => {
                 <button
                   onClick={() => setShowNotifications(true)}
                   className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label={notificationCount > 0 ? `Notifications, ${notificationCount} unread` : 'Notifications'}
                 >
                   {notificationCount > 0 ? <BellIconSolid className="h-6 w-6" /> : <BellIcon className="h-6 w-6" />}
                   {notificationCount > 0 && (
@@ -1366,6 +1367,7 @@ const DoctorDashboard: React.FC = () => {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
+                  aria-current={activeTab === tab.id ? 'page' : undefined}
                   className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm flex-shrink-0 whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-blue-500 text-blue-600'

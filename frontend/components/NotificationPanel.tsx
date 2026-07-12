@@ -73,10 +73,17 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
         onClose();
       }
     };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+        document.removeEventListener('keydown', handleEscape);
+      };
     }
   }, [isOpen, onClose]);
 
@@ -239,6 +246,9 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
       
       <div
         ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Notifications"
         className="absolute right-0 top-0 h-full w-full max-w-md bg-white shadow-xl transform transition-transform duration-300 ease-in-out"
       >
         {/* Header */}
@@ -256,6 +266,7 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
+              aria-label="Close notifications"
             >
               <XMarkIcon className="h-6 w-6" />
             </button>
