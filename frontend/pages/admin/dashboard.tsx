@@ -6,6 +6,9 @@ import { ProtectedRoute } from '../../components/ProtectedRoute';
 import NotificationPanel from '../../components/NotificationPanel';
 import { apiClient } from '../../lib/api';
 import { useUnreadNotificationCount, useSetUnreadCount } from '../../hooks/useNotifications';
+import AnalyticsPanel from '../../features/admin/AnalyticsPanel';
+import SystemPanel from '../../features/admin/SystemPanel';
+import AuditLogPanel from '../../features/admin/AuditLogPanel';
 import {
   UsersIcon,
   ChartBarIcon,
@@ -669,7 +672,7 @@ const AdminDashboard: React.FC = () => {
                 { id: 'users', label: 'Users', icon: UsersIcon },
                 { id: 'analytics', label: 'Analytics', icon: DocumentTextIcon },
                 { id: 'system', label: 'System', icon: CogIcon },
-                { id: 'reports', label: 'Reports', icon: DocumentTextIcon }
+                { id: 'reports', label: 'Audit Log', icon: DocumentTextIcon }
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -693,27 +696,9 @@ const AdminDashboard: React.FC = () => {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'users' && renderUsers()}
-          {activeTab === 'analytics' && (
-            <div className="text-center py-12">
-              <ChartBarIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Advanced Analytics</h3>
-              <p className="text-gray-600">Detailed analytics dashboard coming soon...</p>
-            </div>
-          )}
-          {activeTab === 'system' && (
-            <div className="text-center py-12">
-              <CogIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">System Management</h3>
-              <p className="text-gray-600">System configuration and management tools coming soon...</p>
-            </div>
-          )}
-          {activeTab === 'reports' && (
-            <div className="text-center py-12">
-              <DocumentTextIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Reports & Exports</h3>
-              <p className="text-gray-600">Comprehensive reporting system coming soon...</p>
-            </div>
-          )}
+          {activeTab === 'analytics' && <AnalyticsPanel stats={stats} />}
+          {activeTab === 'system' && <SystemPanel />}
+          {activeTab === 'reports' && <AuditLogPanel />}
         </main>
       </div>
 
