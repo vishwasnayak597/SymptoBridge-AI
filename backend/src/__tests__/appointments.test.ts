@@ -91,6 +91,38 @@ describe('AppointmentService.addRating', () => {
   });
 });
 
+describe('PHI encryption at rest (symptoms)', () => {
+  it('stores ciphertext in Mongo but returns plaintext through the model', async () => {
+    const { patientId, doctorId } = await createUsers();
+    const appointment = await Appointment.create(appointmentFixture(patientId, doctorId));
+
+    // Raw driver read — what an attacker with DB access would see.
+    const raw = await Appointment.collection.findOne({ _id: appointment._id });
+    expect(String(raw!.symptoms)).toMatch(/^enc:v1:/);
+    expect(String(raw!.symptoms)).not.toContain('Chest pain');
+
+    // Model read — what the API serves.
+    const viaModel = await Appointment.findById(appointment._id);
+    expect(viaModel!.symptoms).toBe('Chest pain and shortness of breath');
+    expect((viaModel!.toJSON() as any).symptoms).toBe('Chest pain and shortness of breath');
+  });
+
+  it('still displays legacy plaintext rows untouched (backward compatible)', async () => {
+    const { patientId, doctorId } = await createUsers();
+    // Simulate a pre-encryption row written straight to the collection.
+    const { insertedId } = await Appointment.collection.insertOne({
+      ...appointmentFixture(patientId, doctorId),
+      symptoms: 'Old unencrypted symptoms text',
+      status: 'scheduled',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const doc = await Appointment.findById(insertedId);
+    expect(doc!.symptoms).toBe('Old unencrypted symptoms text');
+  });
+});
+
 describe('VideoCallService.getActiveCallForPatient (ring window)', () => {
   it('rings for a call the doctor started just now', async () => {
     const { patientDoc, doctorDoc, patientId, doctorId } = await createUsers();

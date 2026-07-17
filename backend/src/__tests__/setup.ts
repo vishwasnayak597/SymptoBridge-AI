@@ -9,6 +9,7 @@ import mongoose from 'mongoose';
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.PHI_ENCRYPTION_KEY = 'test-phi-key';
 
 let mongod: MongoMemoryServer;
 

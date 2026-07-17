@@ -4,7 +4,8 @@ import { AppointmentService, CreateAppointmentRequest, PrescriptionData, RatingD
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idempotent } from '../middleware/idempotency';
-import { createAppointmentSchema, appointmentRatingSchema } from '../../../shared/schemas';
+import { createAppointmentSchema, appointmentRatingSchema, joinWaitlistSchema } from '../../../shared/schemas';
+import { WaitlistService } from '../services/WaitlistService';
 import mongoose from 'mongoose';
 import {Appointment} from '../models/Appointment';
 
@@ -306,6 +307,43 @@ router.get('/availability/:doctorId/:date', async (req: Request, res: Response) 
   } catch (error) {
     console.error('Error checking appointment availability:', error);
     res.status(500).json({ success: false, error: 'Server error while checking availability' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Waitlist: join / list mine / leave. When a booking is cancelled the freed
+// slot is offered down this list (see AppointmentService.cancelAppointment).
+// ---------------------------------------------------------------------------
+
+router.post('/waitlist', authenticate, validate(joinWaitlistSchema), async (req: Request, res: Response) => {
+  try {
+    const entry = await WaitlistService.join(
+      req.user!._id.toString(),
+      req.body.doctorId,
+      req.body.date
+    );
+    res.status(201).json({ success: true, data: entry, message: 'Added to the waitlist' });
+  } catch (error) {
+    console.error('Error joining waitlist:', error);
+    res.status(500).json({ success: false, error: 'Failed to join waitlist' });
+  }
+});
+
+router.get('/waitlist/mine', authenticate, async (req: Request, res: Response) => {
+  try {
+    const entries = await WaitlistService.listForPatient(req.user!._id.toString());
+    res.json({ success: true, data: entries });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch waitlist' });
+  }
+});
+
+router.delete('/waitlist/:id', authenticate, async (req: Request, res: Response) => {
+  try {
+    await WaitlistService.leave(req.user!._id.toString(), req.params.id);
+    res.json({ success: true, message: 'Removed from the waitlist' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to leave waitlist' });
   }
 });
 

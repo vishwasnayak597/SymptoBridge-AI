@@ -2,6 +2,7 @@
 import express, { Request, Response } from 'express';
 import User from '../models/User';
 import { authenticate } from '../middleware/auth';
+import { getCached, invalidateCache, CACHE_KEYS } from '../utils/cache';
 
 const router = express.Router();
 
@@ -56,7 +57,15 @@ router.get('/doctors', async (req: Request, res: Response) => {
     const baseFilter = { role: 'doctor', isEmailVerified: true, isActive: true };
 
     const hasLocation = !Number.isNaN(lat) && !Number.isNaN(lng);
-    let doctors = await loadDoctors(baseFilter, hasLocation ? { lat, lng, maxKm } : null);
+
+    // Cache-aside: doctor lists are read-heavy and change rarely. Location is
+    // bucketed to ~1km (2 decimal places) so nearby users share cache entries.
+    const cacheKey = hasLocation
+      ? `${CACHE_KEYS.doctors}${lat.toFixed(2)}:${lng.toFixed(2)}:${maxKm}`
+      : `${CACHE_KEYS.doctors}all`;
+    let doctors = await getCached(cacheKey, 60, () =>
+      loadDoctors(baseFilter, hasLocation ? { lat, lng, maxKm } : null)
+    );
 
     // Transform data to match frontend expectations
     const transformedDoctors = doctors.map(doctor => ({
@@ -193,6 +202,9 @@ router.put('/profile', authenticate, async (req: Request, res: Response) => {
         error: 'User not found'
       });
     }
+
+    // Profile changes can alter what doctor search shows (name, bio, fees).
+    await invalidateCache(CACHE_KEYS.doctors);
 
     res.json({
       success: true,
@@ -363,6 +375,9 @@ router.put('/admin/:userId/status', authenticate, async (req: Request, res: Resp
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    // Activation status controls doctor-search visibility.
+    await invalidateCache(CACHE_KEYS.doctors);
+
     res.json({
       success: true,
       data: user,
@@ -399,6 +414,9 @@ router.put('/admin/:userId/verify', authenticate, async (req: Request, res: Resp
     user.isEmailVerified = true;
     user.isActive = true;
     await user.save();
+
+    // A newly verified doctor must appear in search immediately.
+    await invalidateCache(CACHE_KEYS.doctors);
 
     res.json({
       success: true,

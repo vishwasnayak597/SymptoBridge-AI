@@ -19,6 +19,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { KeepAliveService } from './services/KeepAliveService';
 import { SocketService } from './services/SocketService';
 import { startEventConsumers, stopEventConsumers } from './services/EventBus';
+import { startJobWorkers, stopJobWorkers } from './services/JobQueueService';
 import { getRedis, closeRedis } from './utils/redis';
 import { requestId, httpMetrics, metricsHandler } from './middleware/observability';
 
@@ -209,6 +210,9 @@ async function startServer() {
     // Start domain-event consumers (Redis Streams groups, or in-process fallback)
     startEventConsumers();
 
+    // Start the BullMQ job queue + worker (reminders, waitlist expiry)
+    startJobWorkers();
+
     await new Promise<void>((resolve, reject) => {
       const server = httpServer.listen(PORT, () => {
         logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
@@ -218,6 +222,7 @@ async function startServer() {
         const gracefulShutdown = (signal: string) => {
           KeepAliveService.stop();
           stopEventConsumers();
+          stopJobWorkers().catch(() => {});
           SocketService.close().catch(() => {});
           server.close(() => {
             closeRedis().catch(() => {});

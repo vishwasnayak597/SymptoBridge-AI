@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from 'mongoose';
 import User from './User';
+import { encryptPhi, decryptPhi } from '../utils/phiCrypto';
 
 const APPOINTMENT_STATUS_VALUES = ['scheduled', 'confirmed', 'in-progress', 'completed', 'cancelled', 'no-show'] as const;
 const CONSULTATION_TYPE_VALUES = ['in-person', 'video', 'phone'] as const;
@@ -109,8 +110,13 @@ const appointmentSchema = new Schema<IAppointment>({
   symptoms: {
     type: String,
     required: [true, 'Symptoms description is required'],
-    minlength: [10, 'Symptoms description must be at least 10 characters'],
-    maxlength: [1000, 'Symptoms description must be less than 1000 characters']
+    // PHI: encrypted at rest (AES-256-GCM). The setter runs before validators,
+    // so length limits apply to the CIPHERTEXT — the patient-facing 10..1000
+    // rule is enforced by the shared zod schema at the API edge instead.
+    // maxlength is sized for ciphertext overhead (base64 + iv + tag).
+    set: encryptPhi,
+    get: decryptPhi,
+    maxlength: [4096, 'Symptoms payload too large']
   },
   specialization: {
     type: String,
@@ -178,11 +184,13 @@ const appointmentSchema = new Schema<IAppointment>({
     patientReview: String,
     doctorReview: String
   },
-  notes: String
+  // PHI: doctor's clinical notes, encrypted at rest like symptoms.
+  notes: { type: String, set: encryptPhi, get: decryptPhi }
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  // getters:true so decryption applies when documents are serialized for API responses
+  toJSON: { virtuals: true, getters: true },
+  toObject: { virtuals: true, getters: true }
 });
 
 appointmentSchema.index({ patient: 1, appointmentDate: 1 });

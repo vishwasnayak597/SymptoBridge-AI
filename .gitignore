@@ -130,3 +130,5 @@ docker-compose.yml
 *.bak
 *.backup
 *.old 
+# Generated single-file source bundles (for AI review, not committed)
+PROJECT_BUNDLE*.md

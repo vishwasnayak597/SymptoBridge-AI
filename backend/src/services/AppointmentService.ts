@@ -4,6 +4,13 @@ import User from '../models/User';
 import { NotificationService } from './NotificationService';
 import { VideoCallService } from './VideoCallService';
 import { publishEvent } from './EventBus';
+import { scheduleAppointmentReminders, cancelAppointmentReminders } from './JobQueueService';
+import { WaitlistService } from './WaitlistService';
+
+/** Calendar day of a date as YYYY-MM-DD (waitlist entries key on this). */
+function dayOf(date: Date): string {
+  return new Date(date).toISOString().slice(0, 10);
+}
 
 export interface CreateAppointmentRequest {
   patientId: string;
@@ -83,6 +90,12 @@ export class AppointmentService {
       entityId: appointment._id.toString(),
       payload: { doctorId, consultationType, specialization, fee, appointmentDate: appointmentDate.toISOString() }
     });
+
+    // Delayed T-24h / T-1h reminder jobs; best-effort by design.
+    await scheduleAppointmentReminders(appointment._id.toString(), appointmentDate);
+
+    // If this patient was waiting for this doctor/day, their wait is over.
+    await WaitlistService.markFulfilled(patientId, doctorId, dayOf(appointmentDate)).catch(() => {});
 
     await NotificationService.createNotification({
       recipient: doctorId,
@@ -330,6 +343,13 @@ export class AppointmentService {
       entityId: appointmentId,
       payload: { reason }
     });
+
+    // Drop the pending reminder jobs and offer the freed slot to the waitlist.
+    await cancelAppointmentReminders(appointmentId);
+    await WaitlistService.offerNext(
+      appointment.doctor._id.toString(),
+      dayOf(appointment.appointmentDate)
+    ).catch(() => {});
 
     const isDoctor = appointment.doctor._id.toString() === userId;
     const recipient = isDoctor ? appointment.patient._id.toString() : appointment.doctor._id.toString();
