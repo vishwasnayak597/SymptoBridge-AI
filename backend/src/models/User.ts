@@ -316,7 +316,7 @@ UserSchema.methods.toUserObject = function(): IUser {
   return userObj as IUser;
 };
 
-UserSchema.index({ email: 1 });
+// email already has a unique index from `unique: true` on the field.
 UserSchema.index({ role: 1 });
 UserSchema.index({ 'location.geo': '2dsphere' }, { sparse: true });
 

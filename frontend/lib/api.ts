@@ -39,10 +39,8 @@ class ApiClient {
     this.axiosInstance.interceptors.request.use(
       (config) => {
         const token = this.getAccessToken();
-        
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
-        } else {
         }
         return config;
       },
@@ -53,6 +51,13 @@ class ApiClient {
       (response) => response,
       async (error: AxiosError) => {
         const originalRequest = error.config as any;
+
+        // The refresh call must never be intercepted: while a refresh is in
+        // flight isRefreshing is true, so its own 401 would be queued behind
+        // itself — a deadlock that hangs the app instead of logging out.
+        if (originalRequest?.url?.includes('/auth/refresh')) {
+          return Promise.reject(error);
+        }
 
         if (error.response?.status === 401 && !originalRequest._retry) {
           if (this.isRefreshing) {

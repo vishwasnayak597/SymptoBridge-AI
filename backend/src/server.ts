@@ -11,6 +11,7 @@ import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { RedisStore } from 'rate-limit-redis';
 import path from 'path';
+import mongoose from 'mongoose';
 
 import Database from './utils/database';
 import logger, { morganStream } from './utils/logger';
@@ -74,11 +75,6 @@ async function startServer() {
     };
     app.use(cors(corsOptions));
     
-    // Debug all requests
-    app.use((req, res, next) => {
-      next();
-    });
-    
     // Security middleware
     app.use(helmet({
       contentSecurityPolicy: false,
@@ -118,15 +114,17 @@ async function startServer() {
     });
     app.use('/api', globalRateLimit);
     
-    // Health check route (before database connection)
+    // Health check route (before database connection).
+    // `database` reflects the live mongoose connection state — previously it
+    // was a hardcoded string, which made the admin System panel lie.
     app.get('/health', (req, res) => {
-      res.json({ 
-        status: 'OK', 
+      res.json({
+        status: 'OK',
         timestamp: new Date().toISOString(),
         message: 'SymptoBridge AI backend is running',
         environment: NODE_ENV,
         port: PORT,
-        database: 'connected',
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
         keepAlive: KeepAliveService.getStatus()
       });
     });
@@ -154,12 +152,6 @@ async function startServer() {
       app.use('/api/appointments', appointmentRoutes.default);
       app.use('/api/payments', paymentRoutes.default);
       app.use('/api/notifications', notificationRoutes.default);
-      
-      // Temporary fix for notifications count route
-      app.get('/api/notifications/count', (req, res) => {
-        res.json({ success: true, data: { count: 0 }, message: 'Notification count retrieved' });
-      });
-      
       app.use('/api/video-calls', videoCallRoutes.default);
       app.use('/api/users', userRoutes.default);
       app.use('/api/medical-records', medicalRecordRoutes.default);
@@ -222,13 +214,8 @@ async function startServer() {
         logger.info(`Server running on port ${PORT} in ${NODE_ENV} mode`);
         logger.info(`Health check: http://localhost:${PORT}/health`);
 
-        // Keep server alive with periodic heartbeat
-        const heartbeat = setInterval(() => {
-        }, 60000); // Every minute
-
         // Graceful shutdown handlers
         const gracefulShutdown = (signal: string) => {
-          clearInterval(heartbeat);
           KeepAliveService.stop();
           stopEventConsumers();
           SocketService.close().catch(() => {});

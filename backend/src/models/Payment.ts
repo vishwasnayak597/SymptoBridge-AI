@@ -154,8 +154,8 @@ paymentSchema.index({ appointment: 1 });
 paymentSchema.index({ patient: 1, createdAt: -1 });
 paymentSchema.index({ doctor: 1, createdAt: -1 });
 paymentSchema.index({ status: 1 });
-paymentSchema.index({ transactionId: 1 });
-paymentSchema.index({ paymentGatewayId: 1 });
+// transactionId (unique+sparse) and paymentGatewayId (sparse) already create
+// their indexes at the field level — re-declaring them here duplicated them.
 
 paymentSchema.virtual('isSuccessful').get(function() {
   return this.status === 'completed';
