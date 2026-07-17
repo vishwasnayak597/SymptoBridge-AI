@@ -17,11 +17,19 @@ export interface BaseUser {
   updatedAt: Date;
 }
 
+export interface Dependent {
+  name: string;
+  relation: string;
+  dateOfBirth?: Date;
+}
+
 export interface Patient extends BaseUser {
   role: 'patient';
   dateOfBirth?: Date;
   gender?: 'male' | 'female' | 'other';
   bloodGroup?: string;
+  /** Family accounts: members this patient can book for. */
+  dependents?: Dependent[];
   emergencyContact?: {
     name: string;
     phone: string;

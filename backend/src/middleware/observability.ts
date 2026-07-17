@@ -31,6 +31,28 @@ const httpDuration = new client.Histogram({
   registers: [registry],
 });
 
+// Real-user web vitals (LCP/CLS/FID/TTFB/INP), reported by the frontend's
+// reportWebVitals hook. Values arrive in the metric's native unit
+// (milliseconds, except CLS which is unitless) — buckets sized for ms.
+const webVitals = new client.Histogram({
+  name: 'web_vitals_value',
+  help: 'Real-user web vitals reported by the browser',
+  labelNames: ['metric'] as const,
+  buckets: [0.05, 0.1, 0.25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+  registers: [registry],
+});
+
+const ALLOWED_VITALS = new Set(['LCP', 'CLS', 'FID', 'INP', 'TTFB', 'FCP']);
+
+export function vitalsHandler(req: Request, res: Response): void {
+  const { name, value } = (req.body ?? {}) as { name?: string; value?: number };
+  if (typeof name === 'string' && ALLOWED_VITALS.has(name) && typeof value === 'number' && isFinite(value)) {
+    webVitals.observe({ metric: name }, value);
+  }
+  // Always 204 — beacons don't retry, and bad input isn't worth an error path.
+  res.status(204).end();
+}
+
 export function requestId(req: Request, res: Response, next: NextFunction): void {
   const id = (req.headers['x-request-id'] as string) || randomUUID();
   req.requestId = id;

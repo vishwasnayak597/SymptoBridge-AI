@@ -10,8 +10,10 @@ import {
   CreditCardIcon,
   ChevronLeftIcon
 } from '@heroicons/react/24/outline';
+import toast from 'react-hot-toast';
 import { apiClient } from '../lib/api';
 import { newIdempotencyKey } from '../lib/idempotency';
+import { useAuthContext } from './AuthProvider';
 import PaymentProcessor from './PaymentProcessor';
 
 interface Doctor {
@@ -106,6 +108,45 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
 
+  // Family accounts: who this appointment is for ('self' or a dependent index).
+  const { user, refreshUser } = useAuthContext();
+  const dependents = ((user as any)?.dependents ?? []) as Array<{ name: string; relation: string }>;
+  const [forWhom, setForWhom] = useState<'self' | number>('self');
+  const [showAddDependent, setShowAddDependent] = useState(false);
+  const [newDependent, setNewDependent] = useState({ name: '', relation: '' });
+  const [joiningWaitlist, setJoiningWaitlist] = useState(false);
+
+  const handleAddDependent = async () => {
+    if (!newDependent.name.trim() || !newDependent.relation.trim()) {
+      toast.error('Please enter a name and relation');
+      return;
+    }
+    try {
+      await apiClient.put('/users/dependents', {
+        dependents: [...dependents, { name: newDependent.name.trim(), relation: newDependent.relation.trim() }],
+      });
+      await refreshUser();
+      setForWhom(dependents.length); // select the newly added member
+      setNewDependent({ name: '', relation: '' });
+      setShowAddDependent(false);
+      toast.success('Family member added');
+    } catch {
+      toast.error('Could not add family member');
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    try {
+      setJoiningWaitlist(true);
+      await apiClient.post('/appointments/waitlist', { doctorId: doctor.id, date: selectedDate });
+      toast.success("You're on the waitlist — we'll notify you if a slot frees up.");
+    } catch {
+      toast.error('Could not join the waitlist. Please try again.');
+    } finally {
+      setJoiningWaitlist(false);
+    }
+  };
+
   // Fetch available time slots when date is selected
   const fetchAvailableSlots = async (date: string) => {
     if (!date || !doctor.id) return;
@@ -166,7 +207,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
         symptoms: symptoms.trim(),
         specialization: doctor.specialization,
         fee: doctor.consultationFee,
-        paymentStatus: 'pending'
+        paymentStatus: 'pending',
+        ...(forWhom !== 'self' && dependents[forWhom]
+          ? { forDependent: { name: dependents[forWhom].name, relation: dependents[forWhom].relation } }
+          : {})
       };
 
       
@@ -394,7 +438,73 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                 {selectedDate && !slotsLoading && availableSlots.length === 0 && (
                   <div className="mt-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-center">
                     <p className="font-medium">No available slots</p>
-                    <p className="text-sm">Please select a different date</p>
+                    <p className="text-sm mb-2">Pick another date — or join the waitlist and we&rsquo;ll notify you if a slot frees up.</p>
+                    <button
+                      type="button"
+                      onClick={handleJoinWaitlist}
+                      disabled={joiningWaitlist}
+                      className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-lg text-sm font-medium hover:bg-red-100 transition-colors disabled:opacity-50"
+                    >
+                      {joiningWaitlist ? 'Joining…' : 'Join waitlist for this day'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Family accounts: who is this appointment for? */}
+              <div>
+                <label htmlFor="for-whom" className="block text-sm font-medium text-gray-700 mb-2">
+                  Who is this appointment for?
+                </label>
+                <select
+                  id="for-whom"
+                  value={forWhom === 'self' ? 'self' : String(forWhom)}
+                  onChange={(e) => {
+                    if (e.target.value === 'add') {
+                      setShowAddDependent(true);
+                    } else {
+                      setForWhom(e.target.value === 'self' ? 'self' : Number(e.target.value));
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="self">Myself</option>
+                  {dependents.map((d, i) => (
+                    <option key={`${d.name}-${i}`} value={i}>
+                      {d.name} ({d.relation})
+                    </option>
+                  ))}
+                  <option value="add">➕ Add a family member…</option>
+                </select>
+
+                {showAddDependent && (
+                  <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="text"
+                        value={newDependent.name}
+                        onChange={(e) => setNewDependent((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="Name"
+                        aria-label="Family member name"
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                      <input
+                        type="text"
+                        value={newDependent.relation}
+                        onChange={(e) => setNewDependent((p) => ({ ...p, relation: e.target.value }))}
+                        placeholder="Relation (e.g. daughter)"
+                        aria-label="Relation"
+                        className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handleAddDependent} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                        Save
+                      </button>
+                      <button type="button" onClick={() => setShowAddDependent(false)} className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded-lg hover:bg-gray-300">
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

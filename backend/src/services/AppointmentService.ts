@@ -21,6 +21,7 @@ export interface CreateAppointmentRequest {
   symptoms: string;
   specialization: string;
   fee: number;
+  forDependent?: { name: string; relation: string };
 }
 
 export interface UpdateAppointmentRequest {
@@ -63,7 +64,7 @@ export class AppointmentService {
    * Create a new appointment
    */
   static async createAppointment(data: CreateAppointmentRequest): Promise<IAppointment> {
-    const { patientId, doctorId, appointmentDate, symptoms, specialization, fee, consultationType, duration = 30 } = data;
+    const { patientId, doctorId, appointmentDate, symptoms, specialization, fee, consultationType, duration = 30, forDependent } = data;
 
     await this.validateAppointmentCreation(patientId, doctorId, appointmentDate);
 
@@ -76,6 +77,7 @@ export class AppointmentService {
       symptoms,
       specialization,
       fee,
+      ...(forDependent ? { forDependent } : {}),
       status: 'scheduled'
     });
 

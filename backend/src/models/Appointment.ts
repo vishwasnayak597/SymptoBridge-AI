@@ -41,6 +41,7 @@ export interface IAppointment extends Document {
     doctorReview?: string;
   };
   notes?: string; // General doctor notes about the appointment
+  forDependent?: { name: string; relation: string };
   createdAt: Date;
   updatedAt: Date;
   // Virtuals
@@ -185,7 +186,13 @@ const appointmentSchema = new Schema<IAppointment>({
     doctorReview: String
   },
   // PHI: doctor's clinical notes, encrypted at rest like symptoms.
-  notes: { type: String, set: encryptPhi, get: decryptPhi }
+  notes: { type: String, set: encryptPhi, get: decryptPhi },
+  // Family accounts: snapshot of who the visit is for when it isn't the
+  // account holder. A snapshot (not a ref) so history survives edits.
+  forDependent: {
+    name: String,
+    relation: String,
+  }
 }, {
   timestamps: true,
   // getters:true so decryption applies when documents are serialized for API responses

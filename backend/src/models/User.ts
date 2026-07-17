@@ -30,6 +30,12 @@ export interface IUserDocument extends Document {
   dateOfBirth?: Date;
   gender?: 'male' | 'female' | 'other';
   bloodGroup?: string;
+  /** Family members this (patient) account can book appointments for. */
+  dependents?: Array<{
+    name: string;
+    relation: string;
+    dateOfBirth?: Date;
+  }>;
   emergencyContact?: {
     name: string;
     phone: string;
@@ -142,6 +148,11 @@ const UserSchema = new Schema<IUserDocument>({
     enum: ['male', 'female', 'other']
   },
   bloodGroup: String,
+  dependents: [{
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    relation: { type: String, required: true, trim: true, maxlength: 40 },
+    dateOfBirth: Date,
+  }],
   emergencyContact: {
     name: String,
     phone: String,

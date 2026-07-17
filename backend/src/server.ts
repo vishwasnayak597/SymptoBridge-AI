@@ -21,7 +21,7 @@ import { SocketService } from './services/SocketService';
 import { startEventConsumers, stopEventConsumers } from './services/EventBus';
 import { startJobWorkers, stopJobWorkers } from './services/JobQueueService';
 import { getRedis, closeRedis } from './utils/redis';
-import { requestId, httpMetrics, metricsHandler } from './middleware/observability';
+import { requestId, httpMetrics, metricsHandler, vitalsHandler } from './middleware/observability';
 
 const PORT = process.env.PORT || 5000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -98,6 +98,7 @@ async function startServer() {
     app.use(requestId);
     app.use(httpMetrics);
     app.get('/metrics', metricsHandler);
+    app.post('/api/vitals', vitalsHandler);
 
     // Rate limiting — Redis-backed when available so limits hold across instances;
     // falls back to the in-memory store (single-instance only) without REDIS_URL.

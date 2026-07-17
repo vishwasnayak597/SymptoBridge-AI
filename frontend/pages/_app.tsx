@@ -82,4 +82,23 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
   );
 };
 
+/**
+ * Real-user performance monitoring: Next.js calls this for every web vital
+ * (LCP, CLS, TTFB, ...). We forward them to the API, which feeds a Prometheus
+ * histogram — so /metrics (and Grafana) shows what users actually experience.
+ * keepalive lets the request survive page navigation/close.
+ */
+export function reportWebVitals(metric: { name: string; value: number }): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  const base = (process.env.NEXT_PUBLIC_API_URL || 'https://symptobridge-ai.onrender.com/api').replace(/\/$/, '');
+  fetch(`${base}/vitals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: metric.name, value: metric.value }),
+    keepalive: true,
+  }).catch(() => {
+    // Telemetry must never surface errors to users.
+  });
+}
+
 export default App;

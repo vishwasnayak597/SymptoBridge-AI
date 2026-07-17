@@ -15,6 +15,7 @@ export interface Appointment {
   fee: number;
   videoCallLink?: string;
   createdAt: string;
+  forDependent?: { name: string; relation: string };
   rating?: {
     patientRating?: number;
     patientReview?: string;

@@ -3,6 +3,8 @@ import express, { Request, Response } from 'express';
 import User from '../models/User';
 import { authenticate } from '../middleware/auth';
 import { getCached, invalidateCache, CACHE_KEYS } from '../utils/cache';
+import { validate } from '../middleware/validate';
+import { updateDependentsSchema } from '../../../shared/schemas';
 
 const router = express.Router();
 
@@ -133,6 +135,30 @@ router.get('/profile', authenticate, async (req: Request, res: Response) => {
       success: false,
       error: 'Failed to fetch profile'
     });
+  }
+});
+
+/**
+ * @route PUT /api/users/dependents
+ * @desc Replace the caller's family-member list (family accounts)
+ * @access Private (patients)
+ */
+router.put('/dependents', authenticate, validate(updateDependentsSchema), async (req: Request, res: Response) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.user!._id,
+      { $set: { dependents: req.body.dependents } },
+      { new: true, runValidators: true }
+    ).select('dependents');
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    res.json({ success: true, data: user.dependents, message: 'Family members updated' });
+  } catch (error) {
+    console.error('Error updating dependents:', error);
+    res.status(500).json({ success: false, error: 'Failed to update family members' });
   }
 });
 

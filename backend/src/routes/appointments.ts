@@ -28,7 +28,8 @@ router.post('/', authenticate, validate(createAppointmentSchema), idempotent('ap
       consultationType: req.body.consultationType,
       symptoms: req.body.symptoms,
       specialization: req.body.specialization,
-      fee: req.body.fee
+      fee: req.body.fee,
+      forDependent: req.body.forDependent
     };
 
     const appointment = await AppointmentService.createAppointment(appointmentData);

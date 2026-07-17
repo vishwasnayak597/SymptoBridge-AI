@@ -1,10 +1,29 @@
 import React from 'react';
-import { CalendarDaysIcon, PlusIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
+import { ArrowDownTrayIcon, CalendarDaysIcon, PlusIcon, VideoCameraIcon } from '@heroicons/react/24/outline';
 import { apiClient } from '../../lib/api';
+import { googleCalendarUrl, downloadIcs, CalendarEvent } from '../../lib/calendar';
 import { useInvalidateAppointments } from '../../hooks/useAppointments';
 import { Appointment } from './types';
 import { AppointmentRating } from './AppointmentRating';
 import { formatAppointmentDate, getStatusColor, canJoinVideoCall, joinVideoCall } from './utils';
+
+function toCalendarEvent(appointment: Appointment): CalendarEvent {
+  const doctorName = `Dr. ${appointment.doctor?.firstName ?? ''} ${appointment.doctor?.lastName ?? ''}`.trim();
+  return {
+    title: `Consultation with ${doctorName} — SymptoBridge`,
+    description: `${appointment.consultationType} consultation (${appointment.doctor?.specialization ?? 'General'})`,
+    startsAt: new Date(appointment.appointmentDate),
+    durationMinutes: 30,
+  };
+}
+
+/** Upcoming (not cancelled/completed) appointments are worth calendaring. */
+function isUpcoming(appointment: Appointment): boolean {
+  return (
+    ['scheduled', 'confirmed', 'pending'].includes(appointment.status) &&
+    new Date(appointment.appointmentDate).getTime() > Date.now()
+  );
+}
 
 interface AppointmentsListProps {
   appointments: Appointment[];
@@ -74,6 +93,11 @@ export default function AppointmentsList({ appointments, loading, onBookNew }: A
                         Dr. {appointment.doctor?.firstName || 'Unknown'} {appointment.doctor?.lastName || 'Doctor'}
                       </h3>
                       <p className="text-sm text-gray-500">{appointment.doctor?.specialization || 'General Medicine'}</p>
+                      {appointment.forDependent && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
+                          For: {appointment.forDependent.name} ({appointment.forDependent.relation})
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -117,6 +141,29 @@ export default function AppointmentsList({ appointments, loading, onBookNew }: A
                   )}
                 </div>
               </div>
+
+              {isUpcoming(appointment) && (
+                <div className="mt-4 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-gray-500">Add to calendar:</span>
+                  <a
+                    href={googleCalendarUrl(toCalendarEvent(appointment))}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center text-blue-600 hover:text-blue-800"
+                  >
+                    <CalendarDaysIcon className="h-4 w-4 mr-1" />
+                    Google Calendar
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => downloadIcs(toCalendarEvent(appointment))}
+                    className="inline-flex items-center text-blue-600 hover:text-blue-800"
+                  >
+                    <ArrowDownTrayIcon className="h-4 w-4 mr-1" />
+                    Download invite (.ics)
+                  </button>
+                </div>
+              )}
 
               {appointment.status === 'completed' && (
                 <AppointmentRating appointment={appointment} onSubmit={submitRating} />

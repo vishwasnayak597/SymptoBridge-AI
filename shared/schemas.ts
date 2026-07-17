@@ -57,6 +57,13 @@ export const createAppointmentSchema = z.object({
     .max(1000, 'Symptoms must be less than 1000 characters'),
   specialization: z.string().trim().min(1, 'Specialization is required'),
   fee: z.coerce.number().min(0, 'Fee cannot be negative'),
+  /** Family accounts: who this appointment is for (defaults to the account holder). */
+  forDependent: z
+    .object({
+      name: z.string().trim().min(1).max(80),
+      relation: z.string().trim().min(1).max(40),
+    })
+    .optional(),
 });
 
 export const appointmentRatingSchema = z.object({
@@ -67,6 +74,20 @@ export const appointmentRatingSchema = z.object({
 export const joinWaitlistSchema = z.object({
   doctorId: objectId,
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+});
+
+// ---------------------------------------------------------------------------
+// Family accounts
+// ---------------------------------------------------------------------------
+
+export const dependentSchema = z.object({
+  name: z.string().trim().min(1, 'Name is required').max(80),
+  relation: z.string().trim().min(1, 'Relation is required').max(40),
+  dateOfBirth: z.string().optional(),
+});
+
+export const updateDependentsSchema = z.object({
+  dependents: z.array(dependentSchema).max(10, 'Maximum 10 family members'),
 });
 
 // ---------------------------------------------------------------------------
