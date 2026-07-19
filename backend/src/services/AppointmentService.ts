@@ -59,6 +59,14 @@ export interface RatingData {
   review?: string;
 }
 
+/** Thrown when a booking loses the race for a slot — maps to HTTP 409. */
+export class SlotTakenError extends Error {
+  constructor() {
+    super('Doctor is not available at this time slot');
+    this.name = 'SlotTakenError';
+  }
+}
+
 export class AppointmentService {
   /**
    * Create a new appointment
@@ -81,7 +89,17 @@ export class AppointmentService {
       status: 'scheduled'
     });
 
-    await appointment.save();
+    try {
+      await appointment.save();
+    } catch (err: any) {
+      // The availability pre-check above is read-then-write, so two concurrent
+      // bookings can both pass it. The uniq_doctor_slot_active index is the real
+      // arbiter: the loser lands here with a duplicate-key error.
+      if (err?.code === 11000) {
+        throw new SlotTakenError();
+      }
+      throw err;
+    }
     await appointment.populate('patient', 'firstName lastName email phoneNumber');
     await appointment.populate('doctor', 'firstName lastName email phoneNumber specialization');
 
@@ -511,7 +529,7 @@ export class AppointmentService {
     });
 
     if (existingAppointment) {
-      throw new Error('Doctor is not available at this time slot');
+      throw new SlotTakenError();
     }
   }
 

@@ -205,6 +205,21 @@ appointmentSchema.index({ doctor: 1, appointmentDate: 1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ appointmentDate: 1 });
 
+// Double-booking guard. The pre-save availability check in AppointmentService is
+// read-then-write, so two concurrent requests can both pass it — this index makes
+// the database reject the loser instead. Partial: only live bookings hold a slot,
+// so a cancelled/no-show appointment doesn't block rebooking. Named explicitly
+// because the non-unique { doctor, appointmentDate } read index above shares the
+// same key pattern.
+appointmentSchema.index(
+  { doctor: 1, appointmentDate: 1 },
+  {
+    unique: true,
+    name: 'uniq_doctor_slot_active',
+    partialFilterExpression: { status: { $in: ['scheduled', 'confirmed', 'in-progress'] } }
+  }
+);
+
 appointmentSchema.virtual('appointmentDuration').get(function() {
   return this.duration;
 });

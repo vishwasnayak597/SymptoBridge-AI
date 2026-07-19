@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { body, query, param, validationResult } from 'express-validator';
-import { AppointmentService, CreateAppointmentRequest, PrescriptionData, RatingData } from '../services/AppointmentService';
+import { AppointmentService, CreateAppointmentRequest, PrescriptionData, RatingData, SlotTakenError } from '../services/AppointmentService';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idempotent } from '../middleware/idempotency';
@@ -35,6 +35,9 @@ router.post('/', authenticate, validate(createAppointmentSchema), idempotent('ap
     const appointment = await AppointmentService.createAppointment(appointmentData);
     res.status(201).json({ success: true, data: appointment, message: 'Appointment created successfully' });
   } catch (error) {
+    if (error instanceof SlotTakenError) {
+      return res.status(409).json({ success: false, error: error.message });
+    }
     console.error('Error creating appointment:', error);
     res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to create appointment' });
   }
