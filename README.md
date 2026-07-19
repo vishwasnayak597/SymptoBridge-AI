@@ -78,53 +78,10 @@ REDIS_URL=            # optional — enables distributed rate limiting & the Red
 NEXT_PUBLIC_API_URL=http://localhost:5000/api
 ```
 
-## 🔐 Security & Reliability
-- **JWT access + refresh tokens** with automatic, transparent refresh
-- **Account lockout** after repeated failed logins; **bcrypt** password hashing
-- **Rate limiting** — Redis-backed when `REDIS_URL` is set (holds across instances), in-memory otherwise
-- **`trust proxy`** configured for correct client-IP handling behind a load balancer
-- **Observability** — request-ID tracing, structured logs, and a Prometheus `/metrics` endpoint
-- **Graceful degradation** — the app runs without Redis (in-process fallbacks) and survives a cold ML service
-
 ## 👥 Roles
 - **Patient** — symptom triage, doctor search, appointments, video consults, prescriptions, records
 - **Doctor** — schedule & availability, appointments, consultations, prescriptions, revenue overview
 - **Admin** — user & doctor management, verification, platform analytics
-
-## 🛠️ Development
-
-**Backend**
-```bash
-npm run dev        # start with reload
-npm run build      # compile TypeScript
-npm run start      # run compiled server
-npm run lint       # ESLint
-npm test           # Jest
-npm run seed       # seed demo accounts & doctors
-```
-
-**Frontend**
-```bash
-npm run dev        # start dev server
-npm run build      # static export to out/
-npm run lint       # ESLint
-npm run type-check # tsc --noEmit
-```
-
-### Key API Endpoints
-```
-POST /api/auth/register            Register (patient / doctor)
-POST /api/auth/login               Login
-POST /api/auth/refresh             Refresh access token
-GET  /api/auth/me                  Current user
-GET  /api/users/doctors            Doctor search (geo + filters)
-POST /api/ai/triage                Run a triage step
-POST /api/appointments             Book an appointment
-POST /api/payments                 Create a payment
-POST /api/video-calls              Start a video call
-GET  /metrics                      Prometheus metrics
-GET  /health                       Health check
-```
 
 ## 📚 Technology Stack
 
