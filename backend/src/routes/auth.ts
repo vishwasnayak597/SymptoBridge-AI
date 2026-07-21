@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import { AuthService } from '../services/AuthService';
+import { warmUpMlService } from '../services/TriageService';
 import { authenticate, authorize } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { loginSchema, registerSchema } from '../../../shared/schemas';
@@ -110,8 +111,12 @@ router.post('/register', authLimiter, validate(registerSchema), async (req: Requ
 router.post('/login', authLimiter, validate(loginSchema), async (req: Request, res: Response<ApiResponse>) => {
   try {
     const result = await AuthService.login(req.body);
-    
+
     if (result.success && result.data) {
+      // Wake the ML service now so triage is warm by the time the patient gets
+      // there. Fire-and-forget — must not delay or fail the login response.
+      warmUpMlService();
+
       res.cookie('refreshToken', result.data.tokens.refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',

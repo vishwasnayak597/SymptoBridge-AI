@@ -16,6 +16,17 @@ const ML_SERVICE_URL =
     ? 'https://symptobridge-ml.onrender.com'
     : 'http://localhost:8001');
 
+/**
+ * Fire-and-forget wake-up for the ML service. Called on login so the model is
+ * warming while the patient navigates to the triage wizard — on the free tier a
+ * cold ML service takes ~30s to answer its first request. Best-effort: errors are
+ * swallowed and it never blocks the caller. The AbortSignal caps the dangling
+ * request so a down ML service can't leave the socket hanging indefinitely.
+ */
+export function warmUpMlService(): void {
+  fetch(`${ML_SERVICE_URL}/health`, { signal: AbortSignal.timeout(30000) }).catch(() => {});
+}
+
 export interface TriageCondition {
   disease: string;
   prob: number;

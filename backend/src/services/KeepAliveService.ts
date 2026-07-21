@@ -1,6 +1,10 @@
 /**
- * Internal Keep-Alive Service
- * Runs within the existing aiDoc backend to prevent cold starts
+ * Backend keep-alive.
+ *
+ * Opt-in self-ping that holds THIS service awake during active hours so users
+ * don't hit a cold start. It deliberately does NOT keep the ML service warm —
+ * that's woken on login (see warmUpMlService) so it only runs when needed, which
+ * keeps both services inside the shared free-tier instance-hour budget.
  */
 
 import https from 'https';
@@ -9,40 +13,40 @@ import http from 'http';
 interface KeepAliveConfig {
   PING_INTERVAL: number;
   ENDPOINTS: string[];
-  BUSINESS_HOURS: {
-    START: number;
-    END: number;
+  // Active window expressed in IST (UTC+5:30). Outside it, the backend is left to
+  // sleep so it isn't burning instance-hours overnight when nobody is around.
+  ACTIVE_HOURS_IST: {
+    START: number; // hour, inclusive
+    END: number;   // hour, exclusive
   };
   TIMEOUT: number;
 }
 
+const IST_OFFSET_MINUTES = 5 * 60 + 30; // India is UTC+5:30 year-round (no DST)
+
 export class KeepAliveService {
   private static config: KeepAliveConfig = {
-    PING_INTERVAL: (process.env.KEEP_ALIVE_INTERVAL ? parseInt(process.env.KEEP_ALIVE_INTERVAL) : 3) * 60 * 1000, // 3 minutes default
+    // Render sleeps a free service after ~15 min idle; ping well inside that.
+    PING_INTERVAL: (process.env.KEEP_ALIVE_INTERVAL ? parseInt(process.env.KEEP_ALIVE_INTERVAL) : 10) * 60 * 1000,
+    // Backend only — self-ping our own /health to stay awake.
     ENDPOINTS: [
-      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/health` : 'https://symptobridge-ai.onrender.com/health',
-      process.env.RENDER_EXTERNAL_URL ? `${process.env.RENDER_EXTERNAL_URL}/api/auth/me` : 'https://symptobridge-ai.onrender.com/api/auth/me',
-      // Keep the ML triage service warm too, so the first triage isn't a 50s cold start
-      `${process.env.ML_SERVICE_URL || 'https://symptobridge-ml.onrender.com'}/health`
+      process.env.RENDER_EXTERNAL_URL
+        ? `${process.env.RENDER_EXTERNAL_URL}/health`
+        : 'https://symptobridge-ai.onrender.com/health'
     ],
-    BUSINESS_HOURS: {
-      START: 6,  // 6 AM UTC
-      END: 23    // 11 PM UTC
-    },
+    ACTIVE_HOURS_IST: { START: 7, END: 23 }, // 7am–11pm IST
     TIMEOUT: 15000 // 15 seconds
   };
 
   private static interval: NodeJS.Timeout | null = null;
 
   /**
-   * Start the keep-alive service
+   * Start the keep-alive service.
    */
   static start(): void {
     // Opt-in only. On Render's free tier the whole workspace shares a monthly
     // instance-hour budget, and free services sleep when idle to conserve it.
-    // Self-pinging defeats that — it keeps this service (and the ML service it
-    // pings) awake 24/7 and drains the budget, suspending everything. Enable
-    // this only on a paid instance where avoiding cold starts is worth it:
+    // Self-pinging defeats that, so enable this only where the hours are budgeted:
     //   KEEP_ALIVE_ENABLED=true
     if (process.env.KEEP_ALIVE_ENABLED !== 'true') {
       return;
@@ -62,7 +66,7 @@ export class KeepAliveService {
   }
 
   /**
-   * Stop the keep-alive service
+   * Stop the keep-alive service.
    */
   static stop(): void {
     if (this.interval) {
@@ -72,33 +76,37 @@ export class KeepAliveService {
   }
 
   /**
-   * Check if we're in business hours
+   * Current minute-of-day in IST, derived from UTC so it's correct regardless of
+   * the host's region (Render runs this box in Singapore).
    */
-  private static isBusinessHours(): boolean {
-    const hour = new Date().getUTCHours();
-    return hour >= this.config.BUSINESS_HOURS.START && hour <= this.config.BUSINESS_HOURS.END;
+  private static istMinutesOfDay(): number {
+    const now = new Date();
+    return (now.getUTCHours() * 60 + now.getUTCMinutes() + IST_OFFSET_MINUTES) % (24 * 60);
   }
 
   /**
-   * Ping all endpoints
+   * Are we inside the active IST window? Minute-precision so the 7:00 boundary is
+   * exact even though IST is offset by a half hour from UTC.
+   */
+  private static isActiveWindow(): boolean {
+    const minutes = this.istMinutesOfDay();
+    return minutes >= this.config.ACTIVE_HOURS_IST.START * 60
+        && minutes < this.config.ACTIVE_HOURS_IST.END * 60;
+  }
+
+  /**
+   * Ping all endpoints (only during the active window).
    */
   private static async pingEndpoints(): Promise<void> {
-    const timestamp = new Date().toISOString();
-
-    if (!this.isBusinessHours()) {
+    if (!this.isActiveWindow()) {
       return;
     }
 
-
-    const results = await Promise.all(
-      this.config.ENDPOINTS.map(url => this.pingSingleEndpoint(url))
-    );
-
-    const successCount = results.filter(Boolean).length;
+    await Promise.all(this.config.ENDPOINTS.map(url => this.pingSingleEndpoint(url)));
   }
 
   /**
-   * Ping a single endpoint
+   * Ping a single endpoint.
    */
   private static pingSingleEndpoint(url: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -107,12 +115,9 @@ export class KeepAliveService {
 
       const request = protocol.get(url, { timeout: this.config.TIMEOUT }, (res) => {
         const status = res.statusCode;
-        if (status && status >= 200 && status < 500) {
-          // Accept 200-499 (including 401 for auth endpoints)
-          resolve(true);
-        } else {
-          resolve(false);
-        }
+        // Accept 200-499 (including 401 for auth endpoints) — any response means
+        // the request reached the service, which is all keep-alive needs.
+        resolve(!!status && status >= 200 && status < 500);
       });
 
       request.on('error', (err) => {
@@ -131,18 +136,17 @@ export class KeepAliveService {
   }
 
   /**
-   * Get service status
+   * Get service status (surfaced in /health).
    */
   static getStatus(): object {
     return {
       running: this.interval !== null,
       config: {
         intervalMinutes: this.config.PING_INTERVAL / 60000,
-        businessHours: this.config.BUSINESS_HOURS,
+        activeHoursIST: this.config.ACTIVE_HOURS_IST,
         endpoints: this.config.ENDPOINTS.length
       },
-      currentHour: new Date().getUTCHours(),
-      isBusinessHours: this.isBusinessHours()
+      isActiveWindow: this.isActiveWindow()
     };
   }
 }
