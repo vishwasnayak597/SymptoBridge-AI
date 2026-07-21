@@ -38,10 +38,19 @@ export class KeepAliveService {
    * Start the keep-alive service
    */
   static start(): void {
-    if (this.interval) {
+    // Opt-in only. On Render's free tier the whole workspace shares a monthly
+    // instance-hour budget, and free services sleep when idle to conserve it.
+    // Self-pinging defeats that — it keeps this service (and the ML service it
+    // pings) awake 24/7 and drains the budget, suspending everything. Enable
+    // this only on a paid instance where avoiding cold starts is worth it:
+    //   KEEP_ALIVE_ENABLED=true
+    if (process.env.KEEP_ALIVE_ENABLED !== 'true') {
       return;
     }
 
+    if (this.interval) {
+      return;
+    }
 
     // Initial ping
     this.pingEndpoints();
