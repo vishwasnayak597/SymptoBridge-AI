@@ -1,7 +1,10 @@
 /**
  * Demo data seeder (idempotent).
  *
- *  - Test accounts: patient@test.com / doctor@test.com / admin@test.com  (password Test@1234)
+ *  - Demo accounts (used by the login page's one-click demo buttons):
+ *      testpatient@demo.com    / TestPatient123!
+ *      newtestdoctor@demo.com  / TestDoc123!
+ *      admin@test.com          / Test@1234
  *  - Doctors across Bangalore, Udupi and Mangalore covering every specialization,
  *    each with GeoJSON coordinates so nearest-doctor search works.
  *  - Rich transactional data for the two test accounts (appointments, records,
@@ -77,8 +80,8 @@ const weekdayAvailability = [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
   dayOfWeek, startTime: '09:00', endTime: '17:00', isAvailable: true,
 }));
 
-async function upsertUser(data) {
-  const password = await bcrypt.hash(TEST_PASSWORD, 12);
+async function upsertUser(data, plainPassword = TEST_PASSWORD) {
+  const password = await bcrypt.hash(plainPassword, 12);
   return User.findOneAndUpdate(
     { email: data.email.toLowerCase() },
     { $set: { ...data, email: data.email.toLowerCase(), password } },
@@ -126,14 +129,23 @@ async function main() {
   console.log('Connected to MongoDB\n');
   const db = mongoose.connection.db;
 
-  // ---- 1. test accounts ----
+  // ---- 1. demo accounts (these are the ones the login page's "demo" buttons use) ----
+  // The patient/doctor demo buttons authenticate as testpatient@demo.com and
+  // newtestdoctor@demo.com, so the rich transactional data below must hang off
+  // these exact accounts — otherwise a recruiter logging in via those buttons sees
+  // an empty doctor (no patients, ₹0 income) with an incomplete profile.
   const patient = await upsertUser({
-    email: 'patient@test.com', firstName: 'Test', lastName: 'Patient', phone: '+919876543210',
+    email: 'testpatient@demo.com', firstName: 'Demo', lastName: 'Patient', phone: '+919876543210',
     role: 'patient', isActive: true, isEmailVerified: true,
     dateOfBirth: new Date('1992-04-15'), gender: 'male', bloodGroup: 'O+',
-  });
+    location: {
+      address: '24, Indiranagar', city: 'Bangalore', state: 'Karnataka', zipCode: '560038',
+      coordinates: { latitude: 12.9716, longitude: 77.5946 },
+      geo: { type: 'Point', coordinates: [77.5946 + jitter(), 12.9716 + jitter()] },
+    },
+  }, 'TestPatient123!');
   const doctor = await upsertUser({
-    email: 'doctor@test.com', firstName: 'Sarah', lastName: 'Wilson', phone: '+919876543211',
+    email: 'newtestdoctor@demo.com', firstName: 'Sarah', lastName: 'Wilson', phone: '+919876543211',
     role: 'doctor', isActive: true, isEmailVerified: true, isVerified: true,
     specialization: 'Cardiology', licenseNumber: 'KA-BLR-0001', experience: 12,
     qualifications: ['MBBS', 'MD (Cardiology)'], consultationFee: 1200, rating: 4.8, reviewCount: 156,
@@ -143,13 +155,13 @@ async function main() {
       coordinates: { latitude: 12.9716, longitude: 77.5946 },
       geo: { type: 'Point', coordinates: [77.5946 + jitter(), 12.9716 + jitter()] },
     },
-  });
+  }, 'TestDoc123!');
   await upsertUser({
     email: 'admin@test.com', firstName: 'Admin', lastName: 'User', phone: '+919876543212',
     role: 'admin', isActive: true, isEmailVerified: true,
     permissions: ['manage_users', 'manage_doctors', 'view_reports'],
   });
-  console.log('Test accounts ready (patient@ / doctor@ / admin@test.com)');
+  console.log('Demo accounts ready (testpatient@ / newtestdoctor@demo.com, admin@test.com)');
 
   // ---- 2. city doctors across all specializations ----
   const specs = Object.keys(SPECIALIZATIONS);
@@ -291,8 +303,8 @@ async function main() {
   ];
   await db.collection('reports').insertMany(reports);
 
-  console.log(`Inserted ${records.length} records, ${prescriptions.length} prescriptions, ${reports.length} reports for patient@test.com`);
-  console.log('\nDone. All seeded accounts use password:', TEST_PASSWORD);
+  console.log(`Inserted ${records.length} records, ${prescriptions.length} prescriptions, ${reports.length} reports for testpatient@demo.com`);
+  console.log('\nDone. Demo logins: testpatient@demo.com / TestPatient123!  ·  newtestdoctor@demo.com / TestDoc123!  ·  admin@test.com / ' + TEST_PASSWORD);
 
   await mongoose.disconnect();
   process.exit(0);

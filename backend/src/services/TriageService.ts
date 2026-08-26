@@ -50,14 +50,57 @@ interface SymptomMeta {
 
 let symptomCache: SymptomMeta[] | null = null;
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Call the ML microservice, tolerating free-tier cold starts.
+ *
+ * On Render's free tier the ML service spins down after inactivity and takes
+ * ~30-50s to answer its first request; while it wakes, the router returns
+ * 502/503/504 or the socket times out. A single attempt therefore failed with
+ * "service unavailable" the first time a patient triaged after an idle period.
+ * We retry on those transient conditions with backoff so the request rides out
+ * the cold start instead of surfacing an error. Each attempt is capped by an
+ * AbortSignal so a truly dead service can't hang the socket indefinitely.
+ */
 async function mlFetch(path: string, body?: unknown): Promise<any> {
-  const res = await fetch(`${ML_SERVICE_URL}${path}`, body !== undefined
-    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
-    : {});
-  if (!res.ok) {
-    throw new Error(`ML service ${path} responded ${res.status}`);
+  const RETRIABLE = new Set([502, 503, 504]);
+  // Short backoffs handle the "quick 502 while the service is starting" case;
+  // the generous per-attempt timeout below handles the "router holds the
+  // connection until the service wakes" case in a single shot. The whole budget
+  // stays under the frontend's 90s request timeout for triage calls.
+  const backoffs = [2000, 4000, 6000];
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= backoffs.length; attempt++) {
+    try {
+      const res = await fetch(`${ML_SERVICE_URL}${path}`, {
+        ...(body !== undefined
+          ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+          : {}),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!res.ok) {
+        if (RETRIABLE.has(res.status) && attempt < backoffs.length) {
+          await sleep(backoffs[attempt]);
+          continue;
+        }
+        throw new Error(`ML service ${path} responded ${res.status}`);
+      }
+      return res.json();
+    } catch (err: any) {
+      // Network error / timeout while the service is waking — retry until we run out.
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isAbort = err?.name === 'AbortError' || err?.name === 'TimeoutError';
+      const isNetwork = err?.name === 'TypeError' || isAbort;
+      if (isNetwork && attempt < backoffs.length) {
+        await sleep(backoffs[attempt]);
+        continue;
+      }
+      throw lastError;
+    }
   }
-  return res.json();
+  throw lastError ?? new Error(`ML service ${path} unreachable`);
 }
 
 export async function getTriageMeta(): Promise<any> {

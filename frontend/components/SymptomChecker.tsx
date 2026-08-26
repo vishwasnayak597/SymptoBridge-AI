@@ -77,11 +77,18 @@ const SymptomChecker: React.FC<SymptomCheckerProps> = ({
       recognitionRef.current.lang = 'en-US';
 
       recognitionRef.current.onresult = (event: any) => {
-        let transcript = '';
+        // Only append results that the engine has finalized. Interim results
+        // fire repeatedly for the same words, so appending them here duplicated
+        // the spoken text ("hi I am having hi I am having ...").
+        let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          }
         }
-        setSymptoms(prev => prev + ' ' + transcript);
+        if (finalTranscript.trim()) {
+          setSymptoms(prev => (prev ? prev + ' ' : '') + finalTranscript.trim());
+        }
       };
 
       recognitionRef.current.onend = () => {

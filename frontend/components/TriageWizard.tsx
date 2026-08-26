@@ -73,12 +73,14 @@ const TriageWizard: React.FC<TriageWizardProps> = ({ symptoms, onFindDoctors, on
     setError('');
     setSkip([]);
     try {
-      const r = await apiClient.post('/ai/triage/start', { symptoms });
+      // The ML service spins down on the free tier and can take ~30-50s to wake.
+      // Give this first call a generous timeout so it rides out the cold start.
+      const r = await apiClient.post('/ai/triage/start', { symptoms }, { timeout: 90000 });
       const s: Step = r.data.data;
       setEvidence(s.evidence || {});
       setStep(s);
     } catch (e) {
-      setError('The triage model service is unavailable. Please try again shortly.');
+      setError('The AI triage model is waking up — this can take up to a minute on the first try. Please retry.');
     } finally {
       setLoading(false);
     }
@@ -104,7 +106,7 @@ const TriageWizard: React.FC<TriageWizardProps> = ({ symptoms, onFindDoctors, on
     setLoading(true);
     setError('');
     try {
-      const r = await apiClient.post('/ai/triage/answer', { evidence: nextEvidence, skip: nextSkip });
+      const r = await apiClient.post('/ai/triage/answer', { evidence: nextEvidence, skip: nextSkip }, { timeout: 90000 });
       setStep(r.data.data);
     } catch (e) {
       setError('The triage model service is unavailable. Please try again shortly.');

@@ -81,6 +81,16 @@ const generateDate = () => {
   return dates;
 };
 
+// Returns true if the given HH:mm slot on the given YYYY-MM-DD date is in the
+// past relative to now. Only relevant for "today" — future dates are never past.
+const isPastSlot = (dateValue: string, time: string): boolean => {
+  if (!dateValue) return false;
+  const [hours, minutes] = time.split(':').map(Number);
+  const slot = new Date(`${dateValue}T00:00:00`);
+  slot.setHours(hours, minutes, 0, 0);
+  return slot.getTime() <= Date.now();
+};
+
 // Helper function to format time for display
 const formatTimeForDisplay = (time: string): string => {
   const [hours, minutes] = time.split(':');
@@ -405,9 +415,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                     ) : (
                       // Show all time slots, but disable unavailable ones
                       TIME_SLOTS.map((time) => {
-                        const isAvailable = availableSlots.includes(time);
+                        const isPast = isPastSlot(selectedDate, time);
+                        const isAvailable = availableSlots.includes(time) && !isPast;
                         const isSelected = selectedTime === time;
-                        
+
                         return (
                           <button
                             key={time}
@@ -421,7 +432,7 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                                 ? 'border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-900'
                                 : 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed opacity-50 relative'
                             }`}
-                            title={isAvailable ? 'Available' : 'Already booked'}
+                            title={isAvailable ? 'Available' : isPast ? 'Time has already passed' : 'Already booked'}
                           >
                             {formatTimeForDisplay(time)}
                             {!isAvailable && (

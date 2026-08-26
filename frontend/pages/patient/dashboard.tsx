@@ -40,7 +40,8 @@ import {
   PhotoIcon,
   BeakerIcon,
   ChartBarIcon,
-  XMarkIcon
+  XMarkIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline';
 
 type TabType = 'overview' | 'symptom-checker' | 'find-doctors' | 'appointments' | 'prescriptions' | 'reminders' | 'reports';
@@ -738,10 +739,23 @@ const PatientDashboard: React.FC = () => {
             />
           )}
           {activeTab === 'find-doctors' && (
-            <DoctorSearch 
-              onBookAppointment={handleDoctorBooking} 
-              recommendedSpecializations={recommendedSpecializations}
-            />
+            <>
+              {(user?.email || '').toLowerCase() === 'testpatient@demo.com' && (
+                <div className="mb-4 flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <InformationCircleIcon className="h-5 w-5 flex-shrink-0 text-blue-600 mt-0.5" />
+                  <p className="text-sm text-blue-800">
+                    <span className="font-semibold">Demo tip:</span> Search for{' '}
+                    <span className="font-semibold">Dr. Sarah Wilson</span> (Cardiology, Bangalore) and book an
+                    appointment. She&rsquo;s the demo doctor account, so any appointment you book here will show up
+                    when you log in with the <span className="font-semibold">Demo Doctor</span> button.
+                  </p>
+                </div>
+              )}
+              <DoctorSearch
+                onBookAppointment={handleDoctorBooking}
+                recommendedSpecializations={recommendedSpecializations}
+              />
+            </>
           )}
           {activeTab === 'appointments' && (
             <AppointmentsList
