@@ -65,11 +65,14 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 async function mlFetch(path: string, body?: unknown): Promise<any> {
   const RETRIABLE = new Set([502, 503, 504]);
-  // Short backoffs handle the "quick 502 while the service is starting" case;
-  // the generous per-attempt timeout below handles the "router holds the
-  // connection until the service wakes" case in a single shot. The whole budget
-  // stays under the frontend's 90s request timeout for triage calls.
-  const backoffs = [2000, 4000, 6000];
+  // Render's router usually returns 502 *quickly* while a spun-down service boots,
+  // rather than holding the connection — so a cold start looks like a burst of fast
+  // 502s for ~30-50s, not one long hang. These backoffs keep retrying across that
+  // whole window (~55s of waiting) so the request rides out the boot instead of
+  // giving up early. The generous per-attempt timeout below also covers the rarer
+  // "router holds the connection until awake" case. Total budget stays under the
+  // frontend's 90s request timeout for triage calls.
+  const backoffs = [1000, 2000, 3000, 4000, 5000, 6000, 8000, 10000, 12000];
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= backoffs.length; attempt++) {
@@ -78,7 +81,7 @@ async function mlFetch(path: string, body?: unknown): Promise<any> {
         ...(body !== undefined
           ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
           : {}),
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) {
         if (RETRIABLE.has(res.status) && attempt < backoffs.length) {

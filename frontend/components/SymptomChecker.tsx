@@ -67,6 +67,17 @@ const SymptomChecker: React.FC<SymptomCheckerProps> = ({
   const recognitionRef = useRef<any>(null);
 
 
+  // Warm the ML triage service as soon as the patient opens the symptom checker.
+  // The ML runs as a separate free-tier Render service that spins down when idle
+  // and takes ~20-40s to cold-start. Kicking off a lightweight request here — well
+  // before the patient finishes typing and clicks "Start AI Triage" — means the
+  // model is usually already awake by then, avoiding the "service unavailable" race.
+  // It's a best-effort ping: failures are ignored and it costs nothing extra since
+  // it only fires when a real user is present.
+  useEffect(() => {
+    apiClient.get('/ai/triage/meta').catch(() => {});
+  }, []);
+
   // Initialize speech recognition
   useEffect(() => {
     if (typeof window !== 'undefined' && 'webkitSpeechRecognition' in window) {
