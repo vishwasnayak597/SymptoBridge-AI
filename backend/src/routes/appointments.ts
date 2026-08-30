@@ -6,6 +6,7 @@ import { validate } from '../middleware/validate';
 import { idempotent } from '../middleware/idempotency';
 import { createAppointmentSchema, appointmentRatingSchema, joinWaitlistSchema } from '../../../shared/schemas';
 import { WaitlistService } from '../services/WaitlistService';
+import { buildTriageSummary } from '../services/TriageService';
 import mongoose from 'mongoose';
 import {Appointment} from '../models/Appointment';
 
@@ -29,7 +30,13 @@ router.post('/', authenticate, validate(createAppointmentSchema), idempotent('ap
       symptoms: req.body.symptoms,
       specialization: req.body.specialization,
       fee: req.body.fee,
-      forDependent: req.body.forDependent
+      forDependent: req.body.forDependent,
+      // Triage-driven booking: turn the final evidence into the doctor's pre-visit
+      // summary here (server-side, using the trained engine) rather than trusting
+      // a client-shaped payload.
+      ...(req.body.triageEvidence && Object.keys(req.body.triageEvidence).length
+        ? { triageSummary: buildTriageSummary(req.body.symptoms, req.body.triageEvidence) }
+        : {}),
     };
 
     const appointment = await AppointmentService.createAppointment(appointmentData);

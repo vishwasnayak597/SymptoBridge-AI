@@ -22,6 +22,7 @@ export interface CreateAppointmentRequest {
   specialization: string;
   fee: number;
   forDependent?: { name: string; relation: string };
+  triageSummary?: import('./triageEngine').TriageSummary;
 }
 
 export interface UpdateAppointmentRequest {
@@ -72,7 +73,7 @@ export class AppointmentService {
    * Create a new appointment
    */
   static async createAppointment(data: CreateAppointmentRequest): Promise<IAppointment> {
-    const { patientId, doctorId, appointmentDate, symptoms, specialization, fee, consultationType, duration = 30, forDependent } = data;
+    const { patientId, doctorId, appointmentDate, symptoms, specialization, fee, consultationType, duration = 30, forDependent, triageSummary } = data;
 
     await this.validateAppointmentCreation(patientId, doctorId, appointmentDate);
 
@@ -86,6 +87,7 @@ export class AppointmentService {
       specialization,
       fee,
       ...(forDependent ? { forDependent } : {}),
+      ...(triageSummary ? { triageSummary } : {}),
       status: 'scheduled'
     });
 

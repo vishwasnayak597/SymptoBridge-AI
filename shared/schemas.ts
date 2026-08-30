@@ -64,6 +64,15 @@ export const createAppointmentSchema = z.object({
       relation: z.string().trim().min(1).max(40),
     })
     .optional(),
+  /**
+   * Final symptom evidence from an AI-triage session (symptom id -> 0/1). When
+   * present, the backend builds a structured pre-visit summary for the doctor.
+   * Capped so a client can't stuff arbitrary data.
+   */
+  triageEvidence: z
+    .record(z.string().max(64), z.union([z.literal(0), z.literal(1)]))
+    .refine((e) => Object.keys(e).length <= 60, 'Too many triage findings')
+    .optional(),
 });
 
 export const appointmentRatingSchema = z.object({

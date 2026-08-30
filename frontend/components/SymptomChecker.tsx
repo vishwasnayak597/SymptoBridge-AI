@@ -27,7 +27,11 @@ interface SymptomAnalysis {
 }
 
 interface SymptomCheckerProps {
-  onFindDoctors?: (symptoms: string, recommendedSpecializations?: string[]) => void;
+  onFindDoctors?: (
+    symptoms: string,
+    recommendedSpecializations?: string[],
+    triageEvidence?: Record<string, number>
+  ) => void;
   onBookAppointment?: (urgency: string, recommendedSpecializations?: string[]) => void;
 }
 

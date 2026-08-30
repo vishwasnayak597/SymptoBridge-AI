@@ -36,6 +36,9 @@ interface AppointmentBookingProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (appointmentData: any) => void;
+  /** Final AI-triage evidence, if this booking followed a triage session. Sent to
+   *  the backend so the doctor gets a pre-visit clinical summary. */
+  triageEvidence?: Record<string, number>;
 }
 
 const APPOINTMENT_TYPES = [
@@ -104,7 +107,8 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
   doctor,
   isOpen,
   onClose,
-  onSuccess
+  onSuccess,
+  triageEvidence
 }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -220,7 +224,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
         paymentStatus: 'pending',
         ...(forWhom !== 'self' && dependents[forWhom]
           ? { forDependent: { name: dependents[forWhom].name, relation: dependents[forWhom].relation } }
-          : {})
+          : {}),
+        // Carries the AI-triage findings so the backend can attach a pre-visit
+        // clinical summary to the appointment for the doctor.
+        ...(triageEvidence && Object.keys(triageEvidence).length ? { triageEvidence } : {})
       };
 
       

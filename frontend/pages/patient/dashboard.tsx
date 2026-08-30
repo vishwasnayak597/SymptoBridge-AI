@@ -118,6 +118,9 @@ const PatientDashboard: React.FC = () => {
   const { reports: uploadedReports } = useReports(!!user);
   const [reminders, setReminders] = useState<Reminder[]>(dummyReminders);
   const [recommendedSpecializations, setRecommendedSpecializations] = useState<string[]>([]);
+  // Final evidence from the last AI-triage session, carried into booking so the
+  // doctor gets a pre-visit clinical summary. Undefined for non-triage bookings.
+  const [triageEvidence, setTriageEvidence] = useState<Record<string, number> | undefined>(undefined);
 
   // Add state for active video call notifications
   const [activeVideoCallInvitation, setActiveVideoCallInvitation] = useState<any>(null);
@@ -241,10 +244,15 @@ const PatientDashboard: React.FC = () => {
     await logout();
   };
 
-  const handleFindDoctors = (symptoms: string, specializations?: string[]) => {
+  const handleFindDoctors = (
+    symptoms: string,
+    specializations?: string[],
+    evidence?: Record<string, number>
+  ) => {
     if (specializations && specializations.length > 0) {
       setRecommendedSpecializations(specializations);
     }
+    setTriageEvidence(evidence && Object.keys(evidence).length ? evidence : undefined);
     setActiveTab('find-doctors');
   };
 
@@ -788,6 +796,7 @@ const PatientDashboard: React.FC = () => {
            isOpen={showBookingModal}
            onSuccess={handleBookingSuccess}
            onClose={handleCloseBookingModal}
+           triageEvidence={triageEvidence}
          />
        )}
 

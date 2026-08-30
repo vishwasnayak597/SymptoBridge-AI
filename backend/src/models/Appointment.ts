@@ -42,6 +42,17 @@ export interface IAppointment extends Document {
   };
   notes?: string; // General doctor notes about the appointment
   forDependent?: { name: string; relation: string };
+  // AI triage pre-visit summary (clinical handoff) — the doctor sees the model's
+  // reasoning before the consult. Present only for triage-driven bookings.
+  triageSummary?: {
+    chiefComplaint: string;
+    conditions: Array<{ disease: string; prob: number; specialization: string; urgency: string }>;
+    urgency: string;
+    drivingSymptoms: Array<{ id: string; question: string }>;
+    recommendedSpecializations: string[];
+    askedCount: number;
+    generatedAt: string;
+  };
   createdAt: Date;
   updatedAt: Date;
   // Virtuals
@@ -192,6 +203,21 @@ const appointmentSchema = new Schema<IAppointment>({
   forDependent: {
     name: String,
     relation: String,
+  },
+  // AI triage pre-visit summary. A snapshot of the model's reasoning at booking
+  // time so the doctor sees the differential/urgency/driving symptoms up front.
+  triageSummary: {
+    type: {
+      chiefComplaint: String,
+      conditions: [{ disease: String, prob: Number, specialization: String, urgency: String, _id: false }],
+      urgency: String,
+      drivingSymptoms: [{ id: String, question: String, _id: false }],
+      recommendedSpecializations: [String],
+      askedCount: Number,
+      generatedAt: String,
+    },
+    default: undefined,
+    _id: false,
   }
 }, {
   timestamps: true,

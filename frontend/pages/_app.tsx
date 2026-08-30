@@ -6,6 +6,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { AuthProvider } from '../components/AuthProvider';
 import ErrorBoundary from '../components/ErrorBoundary';
 import OfflineBanner from '../components/OfflineBanner';
+import InstallPrompt from '../components/InstallPrompt';
 import { queryClient, queryPersister } from '../lib/queryClient';
 import '../styles/globals.css';
 
@@ -29,6 +30,7 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
     <AuthProvider>
       <Component {...pageProps} />
       <OfflineBanner />
+      <InstallPrompt />
       <Toaster
         position="top-right"
         toastOptions={{

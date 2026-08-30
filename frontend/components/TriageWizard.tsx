@@ -34,7 +34,11 @@ interface Step {
 
 interface TriageWizardProps {
   symptoms: string;
-  onFindDoctors?: (symptoms: string, specializations?: string[]) => void;
+  onFindDoctors?: (
+    symptoms: string,
+    specializations?: string[],
+    triageEvidence?: Record<string, number>
+  ) => void;
   onRestart?: () => void;
 }
 
@@ -249,7 +253,7 @@ const TriageWizard: React.FC<TriageWizardProps> = ({ symptoms, onFindDoctors, on
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               {onFindDoctors && (
                 <button
-                  onClick={() => onFindDoctors(symptoms, step.recommendedSpecializations)}
+                  onClick={() => onFindDoctors(symptoms, step.recommendedSpecializations, evidence)}
                   className="btn-primary flex items-center justify-center"
                 >
                   <HeartIcon className="h-4 w-4 mr-2" />

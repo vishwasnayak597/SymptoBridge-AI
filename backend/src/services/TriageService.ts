@@ -13,9 +13,19 @@
  * network hop, no cold start, one fewer service to run.
  */
 
-import { triageEngine, TriageCondition, TriageStep } from './triageEngine';
+import { triageEngine, TriageCondition, TriageStep, TriageSummary } from './triageEngine';
+import { semanticMatch } from './semanticMatcher';
 
-export type { TriageCondition, TriageStep };
+export type { TriageCondition, TriageStep, TriageSummary };
+
+/**
+ * Build the structured pre-visit summary attached to a triage-driven booking, so
+ * the doctor sees the AI's reasoning (differential, urgency, driving symptoms)
+ * before the consult. Pure function of the final evidence.
+ */
+export function buildTriageSummary(chiefComplaint: string, evidence: Record<string, number>): TriageSummary {
+  return triageEngine.summarize(chiefComplaint, evidence);
+}
 
 /**
  * No-op kept for backwards compatibility.
@@ -52,9 +62,12 @@ const SYNONYM_PHRASES: Array<[RegExp, string]> = [
 /**
  * Seed symptom evidence from the patient's free-text description.
  *
- * Two passes: (1) match the model's symptom vocabulary where every underscore-separated
+ * Three passes: (1) match the model's symptom vocabulary where every underscore-separated
  * token of a symptom id appears in the text; (2) apply a curated synonym map for lay
- * phrasings the token match would miss. Only symptoms the model actually knows are kept.
+ * phrasings the token match would miss; (3) semantic (embedding) matching for paraphrases
+ * neither of the above catches. The first two are high-precision and always run; the third
+ * boosts recall and degrades to a no-op when the embeddings API is unavailable. Only
+ * symptoms the model actually knows are kept.
  */
 export async function extractInitialFindings(symptoms: string): Promise<Record<string, number>> {
   const text = ` ${symptoms.toLowerCase()} `;
@@ -73,6 +86,13 @@ export async function extractInitialFindings(symptoms: string): Promise<Record<s
     if (known.has(symptomId) && pattern.test(text)) {
       evidence[symptomId] = 1;
     }
+  }
+
+  // Recall boost — safe: semanticMatch swallows its own errors and returns {} when
+  // disabled, so this only ever ADDS confirmed symptoms, never breaks extraction.
+  const semantic = await semanticMatch(symptoms);
+  for (const [id, val] of Object.entries(semantic)) {
+    if (known.has(id) && !(id in evidence)) evidence[id] = val;
   }
 
   return evidence;

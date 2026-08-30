@@ -29,7 +29,9 @@ import {
   UserIcon,
   UserGroupIcon,
   XMarkIcon,
-  CheckIcon
+  CheckIcon,
+  CpuChipIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import { BellIcon as BellIconSolid } from '@heroicons/react/24/solid';
 
@@ -58,6 +60,15 @@ interface Appointment {
   notes?: string;
   prescription?: string;
   diagnosis?: string;
+  triageSummary?: {
+    chiefComplaint: string;
+    conditions: Array<{ disease: string; prob: number; specialization: string; urgency: string }>;
+    urgency: string;
+    drivingSymptoms: Array<{ id: string; question: string }>;
+    recommendedSpecializations: string[];
+    askedCount: number;
+    generatedAt: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -847,6 +858,82 @@ const DoctorDashboard: React.FC = () => {
                         </div>
                       </div>
                     </div>
+
+                    {appointment.triageSummary && (
+                      <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <CpuChipIcon className="h-5 w-5 text-indigo-600" />
+                            <h4 className="font-semibold text-gray-900">AI Triage &middot; pre-visit summary</h4>
+                          </div>
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                              ['urgent', 'high'].includes(appointment.triageSummary.urgency)
+                                ? 'bg-red-100 text-red-700'
+                                : appointment.triageSummary.urgency === 'medium'
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            {['urgent', 'high'].includes(appointment.triageSummary.urgency) && (
+                              <ExclamationTriangleIcon className="h-3.5 w-3.5" />
+                            )}
+                            {appointment.triageSummary.urgency} urgency
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1.5">Likely conditions</p>
+                            <div className="space-y-1.5">
+                              {appointment.triageSummary.conditions.slice(0, 4).map((c) => (
+                                <div key={c.disease}>
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-gray-800">{c.disease}</span>
+                                    <span className="tabular-nums text-gray-500">{Math.round(c.prob * 100)}%</span>
+                                  </div>
+                                  <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-indigo-500"
+                                      style={{ width: `${Math.max(3, Math.round(c.prob * 100))}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            {appointment.triageSummary.drivingSymptoms.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1.5">Reported symptoms</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {appointment.triageSummary.drivingSymptoms.map((s) => (
+                                    <span
+                                      key={s.id}
+                                      className="rounded-full bg-white border border-indigo-200 px-2 py-0.5 text-xs text-indigo-800 capitalize"
+                                    >
+                                      {s.id.replace(/_/g, ' ')}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {appointment.triageSummary.recommendedSpecializations.length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1">Suggested specialist</p>
+                                <p className="text-sm text-gray-800">
+                                  {appointment.triageSummary.recommendedSpecializations.join(', ')}
+                                </p>
+                              </div>
+                            )}
+                            <p className="text-[11px] text-gray-400">
+                              From {appointment.triageSummary.askedCount} findings &middot; AI guidance only, not a diagnosis.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {appointment.notes && (
                       <div className="mt-4">

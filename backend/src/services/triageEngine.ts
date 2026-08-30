@@ -245,6 +245,44 @@ class TriageEngine {
   getSymptoms(): Array<{ id: string; question: string }> {
     return this.symptoms.map((s) => ({ id: s, question: this.questions[s] || s }));
   }
+
+  /**
+   * Structured pre-visit summary for the clinical handoff — what the doctor sees
+   * before the consult. Built from the final evidence so it captures the model's
+   * reasoning: the differential, its urgency, and the symptoms that drove it.
+   */
+  summarize(chiefComplaint: string, evidenceRaw: Record<string, unknown>): TriageSummary {
+    const evidence = this.cleanEvidence(evidenceRaw);
+    const post = this.posterior(evidence);
+    const conditions = this.topConditions(post);
+    const specs: string[] = [];
+    for (const c of conditions) {
+      if (!specs.includes(c.specialization)) specs.push(c.specialization);
+    }
+    const drivingSymptoms = Object.keys(evidence)
+      .filter((s) => evidence[s] === 1)
+      .map((id) => ({ id, question: this.questions[id] || id }));
+
+    return {
+      chiefComplaint,
+      conditions,
+      urgency: this.overallUrgency(conditions),
+      drivingSymptoms,
+      recommendedSpecializations: specs.slice(0, 3),
+      askedCount: Object.keys(evidence).length,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
+
+export interface TriageSummary {
+  chiefComplaint: string;
+  conditions: TriageCondition[];
+  urgency: string;
+  drivingSymptoms: Array<{ id: string; question: string }>;
+  recommendedSpecializations: string[];
+  askedCount: number;
+  generatedAt: string;
 }
 
 // Single shared instance built from the exported model.
