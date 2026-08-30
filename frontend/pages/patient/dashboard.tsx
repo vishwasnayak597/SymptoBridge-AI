@@ -121,6 +121,9 @@ const PatientDashboard: React.FC = () => {
   // Final evidence from the last AI-triage session, carried into booking so the
   // doctor gets a pre-visit clinical summary. Undefined for non-triage bookings.
   const [triageEvidence, setTriageEvidence] = useState<Record<string, number> | undefined>(undefined);
+  // The patient's own free-text description from triage, used to prefill the
+  // booking form so they don't retype it. Empty for non-triage bookings.
+  const [triageSymptoms, setTriageSymptoms] = useState('');
 
   // Add state for active video call notifications
   const [activeVideoCallInvitation, setActiveVideoCallInvitation] = useState<any>(null);
@@ -253,6 +256,7 @@ const PatientDashboard: React.FC = () => {
       setRecommendedSpecializations(specializations);
     }
     setTriageEvidence(evidence && Object.keys(evidence).length ? evidence : undefined);
+    setTriageSymptoms(symptoms || '');
     setActiveTab('find-doctors');
   };
 
@@ -280,6 +284,9 @@ const PatientDashboard: React.FC = () => {
     setLastBookedAppointment(appointmentData);
     setBookingSuccess(true);
     setActiveTab('appointments');
+    // Consume the triage context so a later, unrelated booking starts blank.
+    setTriageEvidence(undefined);
+    setTriageSymptoms('');
 
     // Refresh appointments list
     invalidateAppointments();
@@ -797,6 +804,7 @@ const PatientDashboard: React.FC = () => {
            onSuccess={handleBookingSuccess}
            onClose={handleCloseBookingModal}
            triageEvidence={triageEvidence}
+           initialSymptoms={triageSymptoms}
          />
        )}
 

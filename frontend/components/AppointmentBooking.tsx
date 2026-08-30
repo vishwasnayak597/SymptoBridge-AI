@@ -39,6 +39,9 @@ interface AppointmentBookingProps {
   /** Final AI-triage evidence, if this booking followed a triage session. Sent to
    *  the backend so the doctor gets a pre-visit clinical summary. */
   triageEvidence?: Record<string, number>;
+  /** The patient's free-text description from triage, used to prefill the
+   *  Symptoms field so they don't retype it. Empty for non-triage bookings. */
+  initialSymptoms?: string;
 }
 
 const APPOINTMENT_TYPES = [
@@ -108,7 +111,8 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  triageEvidence
+  triageEvidence,
+  initialSymptoms
 }) => {
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -187,6 +191,18 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
       setSelectedTime(''); // Reset selected time when date changes
     }
   }, [selectedDate, doctor.id]);
+
+  // Prefill the symptoms field from the patient's triage description so they don't
+  // retype it. Only when the modal opens with a triage description and the field is
+  // still empty — never clobbers text the patient has started typing.
+  useEffect(() => {
+    if (isOpen && initialSymptoms && initialSymptoms.trim() && !symptoms.trim()) {
+      const t = initialSymptoms.trim();
+      const framed = t.charAt(0).toUpperCase() + t.slice(1) + (/[.!?]$/.test(t) ? '' : '.');
+      setSymptoms(framed);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialSymptoms]);
 
   // One idempotency key per logical booking: retries (double-click, network
   // timeout) replay the same booking server-side instead of creating a second

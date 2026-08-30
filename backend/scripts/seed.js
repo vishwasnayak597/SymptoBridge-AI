@@ -163,6 +163,13 @@ async function main() {
   });
   console.log('Demo accounts ready (testpatient@ / newtestdoctor@demo.com, admin@test.com)');
 
+  // Deactivate legacy test accounts from earlier seed versions (they were also named
+  // "Sarah Wilson"/"Test Patient" and would otherwise show up as duplicates in search).
+  await db.collection('users').updateMany(
+    { email: { $in: ['doctor@test.com', 'patient@test.com'] } },
+    { $set: { isActive: false, isVerified: false } }
+  );
+
   // ---- 2. city doctors across all specializations ----
   const specs = Object.keys(SPECIALIZATIONS);
   const cityDoctors = [];

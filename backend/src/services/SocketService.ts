@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server as IOServer, Socket } from 'socket.io';
 import { verifyAccessToken } from '../utils/jwt';
 import logger from '../utils/logger';
+import { translateText, CAPTION_LANGS } from './translationService';
 
 /**
  * Real-time layer:
@@ -73,6 +74,38 @@ class SocketServiceImpl {
         const room = `call:${callId}`;
         socket.to(room).emit('call:peer-left', { userId });
         socket.leave(room);
+      });
+
+      // ---- Live captions / translation ----
+      // Each participant registers the language they want to READ captions in; a
+      // peer's speech is then translated to that language before being delivered.
+      socket.on('caption:lang', ({ lang }: { lang: string }) => {
+        socket.data.captionLang = lang && CAPTION_LANGS[lang] ? lang : undefined;
+      });
+
+      // A participant's recognized speech: translate to each OTHER participant's
+      // chosen language and deliver it as a caption. Best-effort — a failure here
+      // must never disturb the call, so errors are swallowed per-recipient.
+      socket.on('caption:speech', async ({ callId, text, lang }: { callId: string; text: string; lang?: string }) => {
+        if (!callId || !text?.trim() || !this.io) return;
+        const clean = text.trim().slice(0, 500);
+        const sourceLang = lang; // the speaker's language
+        try {
+          const peers = await this.io.in(`call:${callId}`).fetchSockets();
+          for (const peer of peers) {
+            if (peer.id === socket.id) continue;
+            const targetLang = (peer.data as any)?.captionLang as string | undefined;
+            // Only pay for a Gemini call when languages actually differ. Same
+            // language (or peer has captions off) -> pass the text through untouched.
+            const out =
+              targetLang && targetLang !== sourceLang
+                ? await translateText(clean, targetLang)
+                : clean;
+            peer.emit('caption:show', { text: out, original: clean, from: userId });
+          }
+        } catch (e: any) {
+          logger.warn(`caption relay failed: ${e?.message || e}`);
+        }
       });
 
       // ---- In-call chat (relayed via the call room) ----

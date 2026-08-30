@@ -19,6 +19,12 @@ import {
 } from '@heroicons/react/24/outline';
 import { StarIcon as StarIconSolid } from '@heroicons/react/24/solid';
 import { apiClient } from '../lib/api';
+import { useAuthContext } from './AuthProvider';
+
+// The demo patient always sees the demo doctor pinned first (so recruiters can't
+// miss the account that receives their test bookings), regardless of search/filter.
+const DEMO_PATIENT_EMAIL = 'testpatient@demo.com';
+const DEMO_DOCTOR_EMAIL = 'newtestdoctor@demo.com';
 
 // Dynamic import with SSR disabled for Leaflet
 const DoctorMap = dynamic(() => import('./DoctorMap'), {
@@ -35,6 +41,7 @@ const DoctorMap = dynamic(() => import('./DoctorMap'), {
 
 interface Doctor {
   id: string;
+  email?: string;
   name: string;
   specialization: string;
   rating: number;
@@ -91,6 +98,8 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
   onBookAppointment,
   recommendedSpecializations = []
 }) => {
+  const { user } = useAuthContext();
+  const isDemoPatient = (user?.email || '').toLowerCase() === DEMO_PATIENT_EMAIL;
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [selectedSpecialization, setSelectedSpecialization] = useState('All Specializations');
   const [sortBy, setSortBy] = useState('distance');
@@ -122,6 +131,7 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
         // Transform API data to match our Doctor interface
         const transformedDoctors: Doctor[] = data.data?.map((doc: any) => ({
           id: doc._id,
+          email: doc.email,
           name: `Dr. ${doc.firstName} ${doc.lastName}`,
           specialization: doc.specialization || 'General Practice',
           rating: doc.rating || 4.5,
@@ -224,8 +234,18 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
       }
     });
 
+    // Demo patient: always float the demo doctor to the very top, even when the
+    // current search/filter would exclude them — so a recruiter's test booking
+    // always lands on the account they log into as the demo doctor.
+    if (isDemoPatient) {
+      const demo = doctors.find((d) => (d.email || '').toLowerCase() === DEMO_DOCTOR_EMAIL);
+      if (demo) {
+        filtered = [demo, ...filtered.filter((d) => d.id !== demo.id)];
+      }
+    }
+
     setFilteredDoctors(filtered);
-  }, [searchTerm, selectedSpecialization, sortBy, showOnlineOnly, doctors, recommendedSpecializations]);
+  }, [searchTerm, selectedSpecialization, sortBy, showOnlineOnly, doctors, recommendedSpecializations, isDemoPatient]);
 
   const renderStars = (rating: number) => {
     const stars = [];
@@ -382,8 +402,21 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {filteredDoctors.length > 0 ? (
           filteredDoctors.map((doctor) => (
-            <div key={doctor.id} className="card hover-lift">
+            <div
+              key={doctor.id}
+              className={`card hover-lift ${
+                isDemoPatient && (doctor.email || '').toLowerCase() === DEMO_DOCTOR_EMAIL
+                  ? 'ring-2 ring-[#E8765A]'
+                  : ''
+              }`}
+            >
               <div className="card-body">
+                {isDemoPatient && (doctor.email || '').toLowerCase() === DEMO_DOCTOR_EMAIL && (
+                  <div className="mb-3 inline-flex items-center gap-1 rounded-full bg-[#E8765A]/10 px-2.5 py-0.5 text-xs font-semibold text-[#E8765A]">
+                    <SparklesIcon className="h-3.5 w-3.5" />
+                    Recommended for your demo — book here
+                  </div>
+                )}
                 {/* Doctor Header */}
                 <div className="flex items-start space-x-4 mb-4">
                   <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">

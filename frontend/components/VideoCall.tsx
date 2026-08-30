@@ -7,7 +7,8 @@ import {
   CameraIcon,
   XMarkIcon,
   ClockIcon,
-  SignalIcon
+  SignalIcon,
+  LanguageIcon
 } from '@heroicons/react/24/outline';
 import {
   VideoCameraIcon as VideoCameraIconSolid,
@@ -48,6 +49,20 @@ const ICE_SERVERS: RTCConfiguration = {
   ],
 };
 
+// Languages offered for live captions. `bcp47` is the speech-recognition locale for
+// capturing this speaker's own voice; `code` matches the backend translator.
+const CAPTION_LANGS: Array<{ code: string; name: string; bcp47: string }> = [
+  { code: 'en', name: 'English', bcp47: 'en-US' },
+  { code: 'hi', name: 'Hindi', bcp47: 'hi-IN' },
+  { code: 'kn', name: 'Kannada', bcp47: 'kn-IN' },
+  { code: 'ta', name: 'Tamil', bcp47: 'ta-IN' },
+  { code: 'te', name: 'Telugu', bcp47: 'te-IN' },
+];
+
+const speechSupported =
+  typeof window !== 'undefined' &&
+  ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
 const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onError }) => {
   const [status, setStatus] = useState<'initializing' | 'waiting' | 'connecting' | 'connected' | 'peer-left'>('initializing');
   const [isMuted, setIsMuted] = useState(false);
@@ -58,9 +73,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
 
+  // Live captions / translation
+  const [captionsOn, setCaptionsOn] = useState(false);
+  const [captionLang, setCaptionLang] = useState('en');
+  const [caption, setCaption] = useState<{ text: string; original: string } | null>(null);
+
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const captionsOnRef = useRef(false);
+  const captionTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -179,12 +202,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
       setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight }), 50);
     };
 
+    const onCaption = ({ text, original }: { text: string; original: string }) => {
+      setCaption({ text, original });
+      if (captionTimerRef.current) clearTimeout(captionTimerRef.current);
+      captionTimerRef.current = setTimeout(() => setCaption(null), 6000);
+    };
+
     socket.on('call:peer-joined', onPeerJoined);
     socket.on('webrtc:offer', onOffer);
     socket.on('webrtc:answer', onAnswer);
     socket.on('webrtc:ice', onIce);
     socket.on('call:peer-left', onPeerLeft);
     socket.on('chat:message', onChat);
+    socket.on('caption:show', onCaption);
 
     start();
 
@@ -197,6 +227,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
       socket.off('webrtc:ice', onIce);
       socket.off('call:peer-left', onPeerLeft);
       socket.off('chat:message', onChat);
+      socket.off('caption:show', onCaption);
       pcRef.current?.close();
       pcRef.current = null;
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -204,6 +235,53 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
       if (durationRef.current) clearInterval(durationRef.current);
     };
   }, [callId, createPeerConnection, flushPendingIce, onError]);
+
+  // ---------- live captions / translation ----------
+  // Registers the language this participant wants to READ, and (where the browser
+  // supports speech recognition) transcribes their own voice and sends it so the
+  // peer receives a translated caption. Best-effort: a browser without speech
+  // recognition can still RECEIVE captions, just not send them.
+  useEffect(() => {
+    captionsOnRef.current = captionsOn;
+    const socket = getSocket();
+    if (!socket) return;
+
+    socket.emit('caption:lang', { lang: captionsOn ? captionLang : '' });
+    if (!captionsOn) setCaption(null);
+
+    if (!captionsOn || !speechSupported) return;
+
+    const SR: any = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const rec = new SR();
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.lang = CAPTION_LANGS.find((l) => l.code === captionLang)?.bcp47 || 'en-US';
+    rec.onresult = (e: any) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const t = (e.results[i][0].transcript || '').trim();
+          // Include our language so the server can skip translation when the peer
+          // speaks the same one (no needless Gemini call).
+          if (t) getSocket()?.emit('caption:speech', { callId, text: t, lang: captionLang });
+        }
+      }
+    };
+    // Chrome ends recognition periodically — restart while captions are still on.
+    rec.onend = () => {
+      if (captionsOnRef.current) {
+        try { rec.start(); } catch { /* already started */ }
+      }
+    };
+    rec.onerror = () => { /* mic denied / no-speech — ignore, keep the call going */ };
+    try { rec.start(); } catch { /* ignore */ }
+    recognitionRef.current = rec;
+
+    return () => {
+      captionsOnRef.current = false; // stop the onend auto-restart
+      try { rec.stop(); } catch { /* ignore */ }
+      recognitionRef.current = null;
+    };
+  }, [captionsOn, captionLang, callId]);
 
   // ---------- controls ----------
   const toggleMute = () => {
@@ -328,6 +406,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
               Screen Sharing
             </div>
           )}
+
+          {/* Live translated caption */}
+          {captionsOn && caption && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-2xl px-4 pointer-events-none">
+              <div className="rounded-lg bg-black/75 px-4 py-2 text-center text-white text-lg leading-snug shadow-lg">
+                {caption.text}
+              </div>
+            </div>
+          )}
+          {captionsOn && (
+            <div className="absolute top-4 left-4 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+              Captions: {CAPTION_LANGS.find((l) => l.code === captionLang)?.name}
+              {!speechSupported && ' · receive-only in this browser'}
+            </div>
+          )}
         </div>
 
         {/* Chat panel (relayed over the same socket room) */}
@@ -394,6 +487,29 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
           >
             <ComputerDesktopIcon className="h-6 w-6 text-white" />
           </button>
+
+          {/* Live captions / translation */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCaptionsOn((v) => !v)}
+              className={`p-3 rounded-full transition-colors ${captionsOn ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-700 hover:bg-gray-600'}`}
+              title={captionsOn ? 'Turn off live captions' : 'Turn on live captions / translation'}
+            >
+              <LanguageIcon className="h-6 w-6 text-white" />
+            </button>
+            {captionsOn && (
+              <select
+                value={captionLang}
+                onChange={(e) => setCaptionLang(e.target.value)}
+                className="bg-gray-700 text-white text-sm rounded-lg px-2 py-2 outline-none"
+                title="Your language — you'll read captions in this, and the other person hears you translated"
+              >
+                {CAPTION_LANGS.map((l) => (
+                  <option key={l.code} value={l.code}>{l.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
 
           <button onClick={endCall} className="p-3 rounded-full bg-red-600 hover:bg-red-700 transition-colors" title="End call">
             <PhoneXMarkIcon className="h-6 w-6 text-white" />
