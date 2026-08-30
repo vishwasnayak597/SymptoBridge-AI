@@ -77,6 +77,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
   const [captionsOn, setCaptionsOn] = useState(false);
   const [captionLang, setCaptionLang] = useState('en');
   const [caption, setCaption] = useState<{ text: string; original: string } | null>(null);
+  const [selfCaption, setSelfCaption] = useState<string | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -84,6 +85,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
   const recognitionRef = useRef<any>(null);
   const captionsOnRef = useRef(false);
   const captionTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const selfCaptionTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -260,9 +262,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
       for (let i = e.resultIndex; i < e.results.length; i++) {
         if (e.results[i].isFinal) {
           const t = (e.results[i][0].transcript || '').trim();
-          // Include our language so the server can skip translation when the peer
-          // speaks the same one (no needless Gemini call).
-          if (t) getSocket()?.emit('caption:speech', { callId, text: t, lang: captionLang });
+          if (t) {
+            // Feedback: show the speaker their own recognized words, so it's obvious
+            // the mic is being heard even though the translation goes to the peer.
+            setSelfCaption(t);
+            if (selfCaptionTimerRef.current) clearTimeout(selfCaptionTimerRef.current);
+            selfCaptionTimerRef.current = setTimeout(() => setSelfCaption(null), 4000);
+            // Include our language so the server can skip translation when the peer
+            // speaks the same one (no needless Gemini call).
+            getSocket()?.emit('caption:speech', { callId, text: t, lang: captionLang });
+          }
         }
       }
     };
@@ -407,12 +416,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ callId, userRole, onCallEnd, onEr
             </div>
           )}
 
-          {/* Live translated caption */}
-          {captionsOn && caption && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-2xl px-4 pointer-events-none">
-              <div className="rounded-lg bg-black/75 px-4 py-2 text-center text-white text-lg leading-snug shadow-lg">
-                {caption.text}
-              </div>
+          {/* Live captions: the peer's speech translated into your language (prominent),
+              plus your own recognized words (dim) so you know the mic is heard. */}
+          {captionsOn && (caption || selfCaption) && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-[85%] max-w-2xl px-4 pointer-events-none space-y-1">
+              {caption && (
+                <div className="rounded-lg bg-black/75 px-4 py-2 text-center text-white text-lg leading-snug shadow-lg">
+                  {caption.text}
+                </div>
+              )}
+              {selfCaption && (
+                <div className="rounded-lg bg-black/50 px-3 py-1 text-center text-gray-300 text-sm italic">
+                  You: {selfCaption}
+                </div>
+              )}
             </div>
           )}
           {captionsOn && (
