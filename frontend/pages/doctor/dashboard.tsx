@@ -1615,18 +1615,53 @@ const DoctorDashboard: React.FC = () => {
                      </div>
                    )}
                    
-                   {selectedAppointment.prescription && (
-                     <div className="mt-4">
-                       <label className="block text-sm font-medium text-gray-700 mb-2">Prescription</label>
-                       <p className="text-gray-900 whitespace-pre-wrap">
-                         {typeof selectedAppointment.prescription === 'string' 
-                           ? selectedAppointment.prescription 
-                           : JSON.stringify(selectedAppointment.prescription)
-                         }
-                       </p>
-                     </div>
-                   )}
-                   
+                   {/* Render the prescription, never JSON.stringify it. This showed
+                       the doctor a raw `{"medications":[]}` blob — and did so even
+                       when nothing had been prescribed, because an empty object is
+                       still truthy. */}
+                   {(() => {
+                     const rx: any = selectedAppointment.prescription;
+                     if (!rx) return null;
+                     if (typeof rx === 'string') {
+                       return rx.trim() ? (
+                         <div className="mt-4">
+                           <label className="block text-sm font-medium text-gray-700 mb-2">Prescription</label>
+                           <p className="text-gray-900 whitespace-pre-wrap">{rx}</p>
+                         </div>
+                       ) : null;
+                     }
+                     const meds: any[] = Array.isArray(rx.medications) ? rx.medications : [];
+                     if (meds.length === 0 && !rx.diagnosis && !rx.notes) return null;
+                     return (
+                       <div className="mt-4">
+                         <label className="block text-sm font-medium text-gray-700 mb-2">Prescription</label>
+                         {rx.diagnosis && (
+                           <p className="text-sm text-gray-700 mb-2">
+                             <span className="font-semibold">Diagnosis:</span> {rx.diagnosis}
+                           </p>
+                         )}
+                         {meds.length > 0 ? (
+                           <ul className="space-y-2">
+                             {meds.map((m: any, i: number) => (
+                               <li key={i} className="rounded-lg bg-stone-100 px-3 py-2">
+                                 <p className="font-semibold text-gray-900">{m.name}</p>
+                                 <p className="text-sm text-gray-600">
+                                   {[m.dosage, m.frequency, m.duration].filter(Boolean).join(' · ')}
+                                 </p>
+                                 {m.instructions && (
+                                   <p className="text-sm text-gray-600 mt-1">{m.instructions}</p>
+                                 )}
+                               </li>
+                             ))}
+                           </ul>
+                         ) : (
+                           <p className="text-sm text-gray-500">No medications prescribed.</p>
+                         )}
+                         {rx.notes && <p className="text-sm text-gray-600 mt-2">{rx.notes}</p>}
+                       </div>
+                     );
+                   })()}
+
                    {selectedAppointment.notes && (
                      <div className="mt-4">
                        <label className="block text-sm font-medium text-gray-700 mb-2">Doctor Notes</label>

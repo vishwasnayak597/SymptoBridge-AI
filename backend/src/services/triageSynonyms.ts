@@ -37,7 +37,14 @@ export const LAY_PHRASES: Array<[RegExp, string[]]> = [
 
   // ---- respiratory ----
   [/\bcough(ing)?\b/, ['E_201']],
-  [/\b(phlegm|sputum|mucus|bringing up|productive cough|green|yellow) (cough|phlegm|mucus)?\b/, ['E_77']],
+  // The colour words MUST be attached to sputum. This previously read
+  //   /\b(phlegm|sputum|mucus|bringing up|productive cough|green|yellow) (cough|phlegm|mucus)?\b/
+  // where the trailing group is OPTIONAL — so it collapsed to "match the bare word
+  // yellow". "my eyes have turned yellow" (jaundice) seeded "coughing up coloured
+  // sputum", and fever + chills + productive cough is textbook pneumonia: the model
+  // returned Pneumonia at 100% and asked nothing. An optional qualifier after an
+  // alternation is never safe — the colour has to be bound to what it describes.
+  [/\b(phlegm|sputum)\b|\bbringing up\b|\bproductive cough\b|\b(green|yellow|colou?red|thick(er)?)\s+(phlegm|sputum|mucus)\b|\bcough\w*\s+up\s+\w*\s*(green|yellow|thick)/, ['E_77']],
   [/\bcough(ing)? up blood|blood in my (phlegm|sputum)|haemoptysis|hemoptysis\b/, ['E_45']],
   [/\bcoughing fits?|fits of coughing|can'?t stop coughing\b/, ['E_203']],
   [/\bwhooping cough\b/, ['E_202']],

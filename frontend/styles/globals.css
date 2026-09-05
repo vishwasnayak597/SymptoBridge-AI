@@ -39,6 +39,22 @@
     @apply w-full px-4 py-3 border-0 rounded-xl bg-white text-stone-800 placeholder-stone-400
            shadow-inset focus:outline-none focus:ring-2 focus:ring-ember-500/60;
   }
+  /* A native <select> draws its arrow INSIDE the right padding. `.input-field`
+     reserves only 16px there, so on a long option the arrow lands on top of the
+     text ("All Appointments" with the chevron over the final s). Reserve room and
+     draw our own chevron so it matches the theme instead of the OS default. */
+  select.input-field,
+  select.form-input,
+  select.form-select {
+    @apply pr-11 bg-no-repeat;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%238A867E' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6.5L8 10.5L12 6.5'/%3E%3C/svg%3E");
+    background-position: right 1rem center;
+    background-size: 0.8rem;
+  }
+
   /* An inset dark screen — used for live values and differentials. */
   .readout-panel {
     @apply bg-readout text-stone-100 rounded-2xl shadow-inset-deep;

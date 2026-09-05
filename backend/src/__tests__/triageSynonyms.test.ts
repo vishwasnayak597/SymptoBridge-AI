@@ -134,6 +134,41 @@ describe('lay-phrase seeding', () => {
     expect(s.has('E_55__face')).toBe(false);
   });
 
+  // A colour word alone must never imply sputum. The pattern once ended in an
+  // OPTIONAL qualifier group, so it collapsed to matching the bare word "yellow":
+  // "my eyes have turned yellow" (jaundice) seeded "coughing up coloured sputum",
+  // and fever + chills + productive cough returned Pneumonia at 100% with no
+  // questions asked.
+  it('does not read a bare colour word as coloured sputum', () => {
+    for (const t of [
+      'my eyes have turned yellow',
+      'my skin looks yellow',
+      'the rash is green around the edges',
+      'yellow discharge from my eye',
+    ]) {
+      expect(seed(t).has('E_77')).toBe(false);
+    }
+  });
+
+  it('still seeds productive cough when the colour is attached to sputum', () => {
+    for (const t of [
+      'coughing up yellow phlegm',
+      'green sputum',
+      'my cough is bringing up thick mucus',
+      'productive cough for three days',
+    ]) {
+      expect(seed(t).has('E_77')).toBe(true);
+    }
+  });
+
+  it('does not turn jaundice into pneumonia', () => {
+    const s = seed("my eyes has turned yellow and I am having fever in the evening so I don't know what to do also I have cold shivering at night");
+    expect(s.has('E_91')).toBe(true);   // fever — real
+    expect(s.has('E_94')).toBe(true);   // chills — real
+    expect(s.has('E_77')).toBe(false);  // coloured sputum — fabricated
+    expect(s.has('E_201')).toBe(false); // cough — never mentioned
+  });
+
   it('recognises opaque DDXPlus ids', () => {
     expect(isOpaqueEvidenceId('E_91')).toBe(true);
     expect(isOpaqueEvidenceId('E_55__chest')).toBe(true);

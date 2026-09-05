@@ -232,7 +232,7 @@ const TriageWizard: React.FC<TriageWizardProps> = ({ symptoms, onFindDoctors, on
                 <span className="font-semibold capitalize">{step.urgency} urgency</span>
               </div>
               <p className="text-sm mt-1">
-                Most likely: <strong>{bars[0]?.disease}</strong> ({Math.round((bars[0]?.prob || 0) * 100)}% confidence).
+                Most likely: <strong>{bars[0]?.disease}</strong> ({Math.min(99, Math.round((bars[0]?.prob || 0) * 100))}% confidence).
                 {step.urgency === 'urgent' && ' Seek emergency care now.'}
               </p>
             </div>
@@ -242,7 +242,7 @@ const TriageWizard: React.FC<TriageWizardProps> = ({ symptoms, onFindDoctors, on
                 <p className="text-sm font-medium text-gray-700 mb-2">Recommended specialist(s):</p>
                 <div className="flex flex-wrap gap-2">
                   {step.recommendedSpecializations.map((s) => (
-                    <span key={s} className="px-3 py-1 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-sm">
+                    <span key={s} className="px-3 py-1 rounded-full bg-stone-200 text-stone-700 text-sm font-semibold">
                       {s}
                     </span>
                   ))}
