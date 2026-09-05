@@ -15,6 +15,12 @@
 
 import { triageEngine, TriageCondition, TriageStep, TriageSummary } from './triageEngine';
 import { semanticMatch } from './semanticMatcher';
+import {
+  LAY_PHRASES,
+  PAIN_REGIONS,
+  PAIN_MODIFIERS,
+  isOpaqueEvidenceId,
+} from './triageSynonyms';
 
 export type { TriageCondition, TriageStep, TriageSummary };
 
@@ -74,17 +80,41 @@ export async function extractInitialFindings(symptoms: string): Promise<Record<s
   const syms = triageEngine.getSymptoms();
   const known = new Set(syms.map((s) => s.id));
   const evidence: Record<string, number> = {};
+  const set = (id: string) => {
+    if (known.has(id)) evidence[id] = 1;
+  };
 
+  // Pass 1 — token match on the symptom id. Only valid for self-describing ids
+  // (`chest_pain`). DDXPlus ids are opaque codes (`E_91`, `E_55__chest`); token
+  // matching them would fire `E_57__chest` ("does the pain RADIATE to your chest?")
+  // on the bare word "chest" and seed evidence the patient never gave.
   for (const s of syms) {
+    if (isOpaqueEvidenceId(s.id)) continue;
     const tokens = s.id.split('_').filter((t) => t.length > 2);
     if (tokens.length > 0 && tokens.every((t) => text.includes(t))) {
       evidence[s.id] = 1;
     }
   }
 
+  // Pass 2a — legacy synonym map (applies only while a legacy model is loaded;
+  // `set` silently skips ids the current model does not have).
   for (const [pattern, symptomId] of SYNONYM_PHRASES) {
-    if (known.has(symptomId) && pattern.test(text)) {
-      evidence[symptomId] = 1;
+    if (pattern.test(text)) set(symptomId);
+  }
+
+  // Pass 2b — curated lay phrasings for the DDXPlus vocabulary.
+  for (const [pattern, ids] of LAY_PHRASES) {
+    if (pattern.test(text)) ids.forEach(set);
+  }
+
+  // Pain site / severity / onset. Region and modifier evidence is only meaningful
+  // once the patient has actually reported pain, so gate it on that.
+  if (evidence['E_53'] === 1) {
+    for (const [pattern, id] of PAIN_REGIONS) {
+      if (pattern.test(text)) set(id);
+    }
+    for (const [pattern, id] of PAIN_MODIFIERS) {
+      if (pattern.test(text)) set(id);
     }
   }
 

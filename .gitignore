@@ -132,3 +132,9 @@ docker-compose.yml
 *.old 
 # Generated single-file source bundles (for AI review, not committed)
 PROJECT_BUNDLE*.md
+
+# DDXPlus dataset (~180MB) — re-download with: python -m data.ddxplus --download
+ml-service/data/ddxplus/
+
+# Design canvas working files (published copies live on claude.ai)
+design/

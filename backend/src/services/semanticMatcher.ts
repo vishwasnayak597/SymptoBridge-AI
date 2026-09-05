@@ -73,8 +73,13 @@ async function ensureSymptomVecs(): Promise<void> {
   if (!initPromise) {
     initPromise = (async () => {
       const syms = triageEngine.getSymptoms();
-      // A short natural description per symptom: the human name + the triage question.
-      const descs = syms.map((s) => `${s.id.replace(/_/g, ' ')}. ${s.question}`);
+      // A short natural description per symptom. Self-describing ids ("chest_pain")
+      // add signal and are prefixed; opaque DDXPlus codes ("E_91", "E_55__chest") are
+      // meaningless to an embedding model and would only add noise, so for those the
+      // question text alone is embedded.
+      const descs = syms.map((s) =>
+        /^E_\d+/.test(s.id) ? s.question : `${s.id.replace(/_/g, ' ')}. ${s.question}`
+      );
       const vecs = await embedBatch(descs);
       symptomVecs = syms.map((s, i) => ({ id: s.id, vec: vecs[i], norm: norm(vecs[i]) }));
     })().catch((e) => {

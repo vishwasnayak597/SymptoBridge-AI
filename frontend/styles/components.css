@@ -4,35 +4,35 @@
 
 /* Button Components */
 .btn {
-  @apply inline-flex items-center justify-center px-5 py-2 border border-transparent text-sm font-semibold rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-primary {
-  @apply btn bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+  @apply btn bg-ember-500 text-white hover:bg-ember-600 focus:ring-ember-500 shadow-key;
 }
 
 .btn-secondary {
-  @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500 border-gray-300;
+  @apply btn bg-stone-200 text-stone-700 hover:bg-stone-300 focus:ring-stone-400 shadow-key-muted;
 }
 
 .btn-outline {
-  @apply btn border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white focus:ring-blue-500;
+  @apply btn border-2 border-ember-500 text-ember-600 hover:bg-ember-500 hover:text-white focus:ring-ember-500;
 }
 
 .btn-success {
-  @apply btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-moss-500 text-white hover:bg-moss-600 focus:ring-moss-500 shadow-key;
 }
 
 .btn-warning {
-  @apply btn bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-warning-500 text-white hover:bg-warning-600 focus:ring-warning-500 shadow-key;
 }
 
 .btn-danger {
-  @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-error-600 text-white hover:bg-error-700 focus:ring-error-500 shadow-key;
 }
 
 .btn-ghost {
-  @apply btn bg-transparent border-2 border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500;
+  @apply btn bg-transparent border-2 border-stone-300 text-stone-600 hover:bg-stone-100 focus:ring-stone-400;
 }
 
 .btn-lg {
@@ -57,7 +57,7 @@
 
 /* Form Components */
 .form-input {
-  @apply block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-gray-900 bg-white;
+  @apply block w-full px-4 py-3 border-0 rounded-xl placeholder-stone-400 shadow-inset focus:outline-none focus:ring-2 focus:ring-ember-500/60 transition-shadow duration-150 text-stone-800 bg-white;
 }
 
 .form-input-error {
@@ -143,7 +143,7 @@
 
 /* Card Components */
 .card {
-  @apply bg-white rounded-3xl shadow-soft border border-gray-200 overflow-hidden;
+  @apply bg-stone-100 rounded-2xl shadow-soft border-0 overflow-hidden;
 }
 
 .card-flat {
@@ -151,15 +151,15 @@
 }
 
 .card-elevated {
-  @apply card shadow-2xl;
+  @apply card shadow-medium;
 }
 
 .card-gradient {
-  @apply card bg-gradient-to-br from-white to-gray-50;
+  @apply card bg-stone-50;
 }
 
 .card-header {
-  @apply px-6 py-4 border-b border-gray-100 bg-gray-50;
+  @apply px-6 py-4 border-b border-stone-200 bg-stone-50;
 }
 
 .card-body {
@@ -167,7 +167,7 @@
 }
 
 .card-footer {
-  @apply px-6 py-4 border-t border-gray-100 bg-gray-50;
+  @apply px-6 py-4 border-t border-stone-200 bg-stone-50;
 }
 
 .card-title {
@@ -526,7 +526,7 @@
 
 /* Utility Classes */
 .hover-lift {
-  @apply transition-transform duration-200 hover:-translate-y-1;
+  @apply transition-shadow duration-150 hover:shadow-medium;
 }
 
 .hover-scale {
@@ -631,35 +631,35 @@
 
 /* Button Components */
 .btn {
-  @apply inline-flex items-center justify-center px-5 py-2 border border-transparent text-sm font-semibold rounded-full transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-primary {
-  @apply btn bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5;
+  @apply btn bg-ember-500 text-white hover:bg-ember-600 focus:ring-ember-500 shadow-key;
 }
 
 .btn-secondary {
-  @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500 border-gray-300;
+  @apply btn bg-stone-200 text-stone-700 hover:bg-stone-300 focus:ring-stone-400 shadow-key-muted;
 }
 
 .btn-outline {
-  @apply btn border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white focus:ring-blue-500;
+  @apply btn border-2 border-ember-500 text-ember-600 hover:bg-ember-500 hover:text-white focus:ring-ember-500;
 }
 
 .btn-success {
-  @apply btn bg-green-600 text-white hover:bg-green-700 focus:ring-green-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-moss-500 text-white hover:bg-moss-600 focus:ring-moss-500 shadow-key;
 }
 
 .btn-warning {
-  @apply btn bg-yellow-500 text-white hover:bg-yellow-600 focus:ring-yellow-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-warning-500 text-white hover:bg-warning-600 focus:ring-warning-500 shadow-key;
 }
 
 .btn-danger {
-  @apply btn bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 shadow-lg hover:shadow-xl;
+  @apply btn bg-error-600 text-white hover:bg-error-700 focus:ring-error-500 shadow-key;
 }
 
 .btn-ghost {
-  @apply btn bg-transparent border-2 border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500;
+  @apply btn bg-transparent border-2 border-stone-300 text-stone-600 hover:bg-stone-100 focus:ring-stone-400;
 }
 
 .btn-lg {
@@ -684,7 +684,7 @@
 
 /* Form Components */
 .form-input {
-  @apply block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-200 text-gray-900 bg-white;
+  @apply block w-full px-4 py-3 border-0 rounded-xl placeholder-stone-400 shadow-inset focus:outline-none focus:ring-2 focus:ring-ember-500/60 transition-shadow duration-150 text-stone-800 bg-white;
 }
 
 .form-input-error {
@@ -770,7 +770,7 @@
 
 /* Card Components */
 .card {
-  @apply bg-white rounded-3xl shadow-soft border border-gray-200 overflow-hidden;
+  @apply bg-stone-100 rounded-2xl shadow-soft border-0 overflow-hidden;
 }
 
 .card-flat {
@@ -778,15 +778,15 @@
 }
 
 .card-elevated {
-  @apply card shadow-2xl;
+  @apply card shadow-medium;
 }
 
 .card-gradient {
-  @apply card bg-gradient-to-br from-white to-gray-50;
+  @apply card bg-stone-50;
 }
 
 .card-header {
-  @apply px-6 py-4 border-b border-gray-100 bg-gray-50;
+  @apply px-6 py-4 border-b border-stone-200 bg-stone-50;
 }
 
 .card-body {
@@ -794,7 +794,7 @@
 }
 
 .card-footer {
-  @apply px-6 py-4 border-t border-gray-100 bg-gray-50;
+  @apply px-6 py-4 border-t border-stone-200 bg-stone-50;
 }
 
 .card-title {
@@ -1153,7 +1153,7 @@
 
 /* Utility Classes */
 .hover-lift {
-  @apply transition-transform duration-200 hover:-translate-y-1;
+  @apply transition-shadow duration-150 hover:shadow-medium;
 }
 
 .hover-scale {

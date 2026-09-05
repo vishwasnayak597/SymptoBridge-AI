@@ -90,7 +90,7 @@ const InstallPrompt: React.FC = () => {
       </button>
       <button
         onClick={install}
-        className="rounded-lg bg-[#E8765A] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#d9634a] focus:outline-none focus:ring-2 focus:ring-orange-300"
+        className="rounded-lg bg-[#E8590C] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[#C74A08] focus:outline-none focus:ring-2 focus:ring-orange-300"
       >
         Install
       </button>

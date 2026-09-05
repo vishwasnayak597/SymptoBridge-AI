@@ -1,6 +1,8 @@
 // @ts-nocheck
 import express, { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import User from '../models/User';
+import { AppointmentService } from '../services/AppointmentService';
 import { authenticate } from '../middleware/auth';
 import { getCached, invalidateCache, CACHE_KEYS } from '../utils/cache';
 import { validate } from '../middleware/validate';
@@ -45,6 +47,33 @@ async function loadDoctors(
     return User.find(filter).lean();
   }
 }
+
+/**
+ * @route GET /api/users/doctors/:id/reviews
+ * @desc Patient reviews for a doctor, newest first
+ * @access Public — patients need to read these before booking
+ *
+ * Declared BEFORE /doctors so Express does not try to match "doctors" as an :id.
+ */
+router.get('/doctors/:id/reviews', async (req: Request, res: Response) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid doctor id' });
+    }
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
+    const skip = Math.max(parseInt(req.query.skip as string, 10) || 0, 0);
+
+    const { reviews, total } = await AppointmentService.getDoctorReviews(
+      req.params.id,
+      limit,
+      skip
+    );
+    res.json({ success: true, data: { reviews, total, limit, skip } });
+  } catch (error) {
+    console.error('Error fetching doctor reviews:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch reviews' });
+  }
+});
 
 /**
  * @route GET /api/users/doctors

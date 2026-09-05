@@ -450,7 +450,97 @@ export class AppointmentService {
     }
 
     await appointment.save();
+
+    // Roll the patient's score up onto the doctor's profile. Without this the rating
+    // is written to the appointment and goes nowhere: User.rating / User.reviewCount
+    // are what the doctor list and search ranking actually read, and nothing else
+    // writes them.
+    if (isPatient) {
+      await this.recalculateDoctorRating(appointment.doctor._id ?? appointment.doctor);
+    }
+
     return appointment;
+  }
+
+  /**
+   * Recompute a doctor's aggregate rating from every completed appointment a patient
+   * has scored.
+   *
+   * Recomputed from source rather than kept as a running average, so it stays correct
+   * when a rating is edited or an appointment is deleted, and so it can be backfilled
+   * for ratings collected before this existed.
+   */
+  static async recalculateDoctorRating(doctorId: mongoose.Types.ObjectId | string): Promise<{
+    rating: number | null;
+    reviewCount: number;
+  }> {
+    const id = typeof doctorId === 'string' ? new mongoose.Types.ObjectId(doctorId) : doctorId;
+
+    const [agg] = await Appointment.aggregate([
+      {
+        $match: {
+          doctor: id,
+          status: 'completed',
+          'rating.patientRating': { $gte: 1 },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          average: { $avg: '$rating.patientRating' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const reviewCount = agg?.count ?? 0;
+    // one decimal place — the UI renders to half-stars, more precision is noise
+    const rating = agg ? Math.round(agg.average * 10) / 10 : null;
+
+    await User.findByIdAndUpdate(id, { rating, reviewCount });
+    return { rating, reviewCount };
+  }
+
+  /**
+   * Patient-written reviews for a doctor, newest first. Reviewer names are reduced
+   * to a first name + initial: a review is public, the identity of the patient who
+   * attended a named doctor on a known date should not be.
+   */
+  static async getDoctorReviews(
+    doctorId: string,
+    limit = 20,
+    skip = 0
+  ): Promise<{ reviews: Array<Record<string, unknown>>; total: number }> {
+    const match = {
+      doctor: new mongoose.Types.ObjectId(doctorId),
+      status: 'completed' as AppointmentStatus,
+      'rating.patientRating': { $gte: 1 },
+    };
+
+    const [total, rows] = await Promise.all([
+      Appointment.countDocuments(match),
+      Appointment.find(match)
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(Math.min(limit, 50))
+        .populate('patient', 'firstName lastName')
+        .select('rating specialization appointmentDate updatedAt patient')
+        .lean(),
+    ]);
+
+    const reviews = rows.map((r: any) => {
+      const first = r.patient?.firstName ?? 'Patient';
+      const initial = r.patient?.lastName ? `${r.patient.lastName[0]}.` : '';
+      return {
+        rating: r.rating?.patientRating ?? null,
+        review: r.rating?.patientReview ?? null,
+        specialization: r.specialization ?? null,
+        reviewedAt: r.updatedAt,
+        patientName: `${first} ${initial}`.trim(),
+      };
+    });
+
+    return { reviews, total };
   }
 
   /**

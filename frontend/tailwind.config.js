@@ -1,23 +1,27 @@
 /** @type {import('tailwindcss').Config} */
 
-// "Warm Wellness" palette. We remap Tailwind's blue/indigo/green/gray scales so the
-// existing components (which use those names everywhere) recolor automatically — coral
-// brand, sage secondary, warm-stone neutrals — without editing component layouts.
-const coral = {
-  50: '#FDF2EE', 100: '#FBE4DB', 200: '#F6C7B6', 300: '#F0A488', 400: '#EC8A66',
-  500: '#E8765A', 600: '#D85F43', 700: '#B44A33', 800: '#8F3B2A', 900: '#742F22',
+// "Instrument" palette — the app styled as a physical medical device rather than a
+// web page: a warm-grey body, panels that sit on it, controls that look pressable.
+//
+// The remap trick from the previous theme is kept: Tailwind's blue/indigo/green/gray
+// scales are redefined, so every component that already says `bg-blue-600` or
+// `text-gray-600` recolours automatically and no component markup has to change.
+const ember = {
+  50: '#FDF1E8', 100: '#FBDFC9', 200: '#F6BE97', 300: '#F09A63', 400: '#EE7B36',
+  500: '#E8590C', 600: '#C74A08', 700: '#A03C07', 800: '#7C2F06', 900: '#5E2405',
 };
-const terracotta = {
-  50: '#FBEFE9', 100: '#F5DACF', 200: '#E9B7A2', 300: '#DD9275', 400: '#D17452',
-  500: '#C25C3C', 600: '#A8492D', 700: '#883A24', 800: '#6D2F1F', 900: '#5A281B',
+const clay = {
+  50: '#FBEFE8', 100: '#F5DBCB', 200: '#E9B79A', 300: '#DC9269', 400: '#D07444',
+  500: '#B85E2E', 600: '#9B4C23', 700: '#7B3C1C', 800: '#5F2F16', 900: '#4B2512',
 };
-const sage = {
-  50: '#F1F5EF', 100: '#E1EADD', 200: '#C5D6BD', 300: '#A3BE97', 400: '#88A77A',
-  500: '#7E9B7A', 600: '#5F7A5A', 700: '#4B6147', 800: '#3D4F3A', 900: '#333F31',
+const moss = {
+  50: '#EFF4EE', 100: '#DCE8DB', 200: '#BCD2BA', 300: '#96B795', 400: '#6F9A70',
+  500: '#3E7B4F', 600: '#336440', 700: '#2A5134', 800: '#22402A', 900: '#1B3322',
 };
-const warmGray = {
-  50: '#FAF7F2', 100: '#F1ECE4', 200: '#E3DBD0', 300: '#CFC5B8', 400: '#A89E8F',
-  500: '#807769', 600: '#5F574B', 700: '#463F36', 800: '#2E2922', 900: '#1C1813',
+// Warm stone body. 50-200 are the device surfaces the whole UI sits on.
+const stone = {
+  50: '#F7F5F0', 100: '#F3F1EC', 200: '#E4E1DA', 300: '#CFCBC2', 400: '#A8A499',
+  500: '#8A867E', 600: '#6E6A63', 700: '#4A4844', 800: '#2A2925', 900: '#1A1918',
 };
 
 module.exports = {
@@ -31,18 +35,28 @@ module.exports = {
     extend: {
       colors: {
         // remapped scales (brand recolor happens here)
-        blue: coral,
-        indigo: terracotta,
-        green: sage,
-        gray: warmGray,
+        blue: ember,
+        indigo: clay,
+        green: moss,
+        gray: stone,
         // semantic aliases + canvas
-        primary: coral,
-        secondary: sage,
-        coral,
-        sage,
-        terracotta,
-        cream: '#FBF7F0',
-        success: sage,
+        primary: ember,
+        secondary: moss,
+        ember,
+        moss,
+        clay,
+        stone,
+        // kept as aliases so any component still naming the old theme keeps working
+        coral: ember,
+        sage: moss,
+        terracotta: clay,
+        /** The device body the panels sit on. */
+        cream: '#E8E6E0',
+        /** The deeper shell behind the device. */
+        shell: '#C9C6BE',
+        /** Inset dark readout panel (differentials, live values). */
+        readout: '#1F2422',
+        success: moss,
         warning: {
           50: '#fffbeb', 100: '#fef3c7', 200: '#fde68a', 300: '#fcd34d', 400: '#fbbf24',
           500: '#f59e0b', 600: '#d97706', 700: '#b45309', 800: '#92400e', 900: '#78350f',
@@ -53,14 +67,23 @@ module.exports = {
         },
       },
       fontFamily: {
-        sans: ['"Nunito Sans"', 'system-ui', 'sans-serif'],
-        serif: ['Fraunces', 'Georgia', 'serif'],
+        // Instrument runs on one face at several weights. `serif` is deliberately
+        // mapped to it too, so the existing `font-serif` headings restyle rather
+        // than needing every heading edited.
+        sans: ['Manrope', 'system-ui', 'sans-serif'],
+        serif: ['Manrope', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'monospace'],
       },
       boxShadow: {
-        soft: '0 2px 15px -3px rgba(80, 60, 40, 0.08), 0 10px 20px -2px rgba(80, 60, 40, 0.05)',
-        medium: '0 4px 25px -3px rgba(80, 60, 40, 0.12), 0 20px 25px -2px rgba(80, 60, 40, 0.1)',
-        strong: '0 10px 50px -12px rgba(80, 60, 40, 0.25)',
+        soft: '0 1px 3px rgba(26, 25, 24, 0.07)',
+        medium: '0 2px 8px rgba(26, 25, 24, 0.1)',
+        strong: '0 20px 44px -14px rgba(26, 25, 24, 0.4), 0 2px 5px rgba(26, 25, 24, 0.13)',
+        /** Pressable control: a hard bottom edge, not a blur. */
+        key: '0 3px 0 rgba(0, 0, 0, 0.24)',
+        'key-muted': '0 3px 0 #CFCBC2',
+        /** Recessed field or readout. */
+        inset: 'inset 0 1px 4px rgba(26, 25, 24, 0.09)',
+        'inset-deep': 'inset 0 2px 6px rgba(26, 25, 24, 0.28)',
       },
       spacing: { 18: '4.5rem', 88: '22rem', 128: '32rem' },
       animation: {

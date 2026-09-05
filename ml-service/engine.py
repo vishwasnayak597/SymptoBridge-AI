@@ -20,6 +20,18 @@ MAX_QUESTIONS = 8
 CONFIDENT_PROB = 0.70          # stop once the leading disease passes this
 URGENT_PROB = 0.45             # stop early if an urgent/high condition passes this
 URGENCY_ORDER = {"low": 0, "medium": 1, "high": 2, "urgent": 3}
+# Minimum posterior for a condition of each urgency to raise the session's urgency.
+# Lower bar for worse outcomes: a 6% chance of a heart attack warrants escalation,
+# a 6% chance of a cold does not. Keep in sync with triageEngine.ts.
+URGENCY_THRESHOLD = {"urgent": 0.05, "high": 0.12, "medium": 0.20, "low": 0.30}
+
+# Below this leading-condition probability the model does not know enough to name a
+# specialist, and says so instead of guessing. Measured separation: genuine answers
+# land at 45-96%, while vague input ("not feeling well", "pain") bottoms out at
+# 15-17% and still produced a confident-looking specialty recommendation.
+# Guessing a specialist costs the patient a consultation fee and a week.
+MIN_CONFIDENCE_TO_NAME_SPECIALIST = 0.30
+FALLBACK_SPECIALIZATION = "General Medicine"
 TOP_N = 6
 
 
@@ -115,10 +127,22 @@ class TriageModel:
         return out
 
     def overall_urgency(self, top: list[dict]) -> str:
+        """
+        Worst urgency among plausible conditions.
+
+        The threshold SCALES WITH SEVERITY rather than being a flat 0.15. A flat cut
+        weighs a 14% chance of a heart attack the same as a 14% chance of a cold and
+        reports neither — it treats probability as the only thing that matters, when
+        what matters is expected harm. The effect got worse with the move from 19 to
+        49 conditions, because probability mass spreads over more classes and fewer
+        conditions clear any fixed bar early in a session.
+        """
         worst = "low"
         for c in top:
-            if c["prob"] >= 0.15 and URGENCY_ORDER[c["urgency"]] > URGENCY_ORDER[worst]:
-                worst = c["urgency"]
+            urg = c["urgency"]
+            if c["prob"] >= URGENCY_THRESHOLD.get(urg, 0.15) and \
+                    URGENCY_ORDER[urg] > URGENCY_ORDER[worst]:
+                worst = urg
         return worst
 
     def should_stop(self, asked: int, post: np.ndarray, top: list[dict]) -> bool:
@@ -149,6 +173,14 @@ class TriageModel:
             if c["specialization"] not in specs:
                 specs.append(c["specialization"])
 
+        # Refuse to name a specialist we are not confident about. Only applies once
+        # questioning has finished — mid-session the posterior is expected to be flat.
+        low_confidence = bool(
+            done and (not top or top[0]["prob"] < MIN_CONFIDENCE_TO_NAME_SPECIALIST)
+        )
+        if low_confidence:
+            specs = [FALLBACK_SPECIALIZATION]
+
         return {
             "posterior": top,
             "nextQuestion": None if (done or sym is None) else {
@@ -159,5 +191,6 @@ class TriageModel:
             "done": done,
             "urgency": self.overall_urgency(top),
             "recommendedSpecializations": specs[:3],
+            "lowConfidence": low_confidence,
             "askedCount": asked,
         }

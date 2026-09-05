@@ -23,7 +23,19 @@ export interface TriageModelData {
   classes: string[];
   symptoms: string[];
   questions: Record<string, string>;
-  disease_meta: Record<string, { specialization?: string; urgency?: string }>;
+  disease_meta: Record<
+    string,
+    {
+      specialization?: string;
+      urgency?: string;
+      /** ICD-10 code, present on DDXPlus-trained models. */
+      icd10?: string | null;
+      /** DDXPlus severity, 1 (most severe) .. 5. Not the same as `urgency`. */
+      severity?: number | null;
+      /** Which dataset contributed this condition ("knowledge.py" for legacy). */
+      source?: string;
+    }
+  >;
   metrics: any;
   class_log_prior: number[];
   feature_log_prob: number[][]; // shape: [n_classes][n_symptoms], log P(symptom=1 | disease)
@@ -42,6 +54,11 @@ export interface TriageStep {
   done: boolean;
   urgency: string;
   recommendedSpecializations: string[];
+  /**
+   * True when questioning finished without enough confidence to name a specialist.
+   * The UI should say so rather than presenting the top condition as an answer.
+   */
+  lowConfidence: boolean;
   askedCount: number;
 }
 
@@ -50,6 +67,26 @@ const MAX_QUESTIONS = 8;
 const CONFIDENT_PROB = 0.7; // stop once the leading disease passes this
 const URGENT_PROB = 0.45; // stop early if an urgent/high condition passes this
 const URGENCY_ORDER: Record<string, number> = { low: 0, medium: 1, high: 2, urgent: 3 };
+/**
+ * Minimum posterior for a condition of each urgency to raise the session's urgency.
+ * Lower bar for worse outcomes: a 6% chance of a heart attack warrants escalation,
+ * a 6% chance of a cold does not. Keep in sync with ml-service/engine.py.
+ */
+const URGENCY_THRESHOLD: Record<string, number> = {
+  urgent: 0.05,
+  high: 0.12,
+  medium: 0.2,
+  low: 0.3,
+};
+const DEFAULT_URGENCY_THRESHOLD = 0.15;
+/**
+ * Below this leading-condition probability the model does not know enough to name a
+ * specialist. Measured separation: genuine answers land at 45-96%, while vague input
+ * bottoms out at 15-17% and still produced a confident-looking recommendation.
+ * Keep in sync with ml-service/engine.py.
+ */
+const MIN_CONFIDENCE_TO_NAME_SPECIALIST = 0.3;
+const FALLBACK_SPECIALIZATION = 'General Medicine';
 const TOP_N = 6;
 
 const round4 = (x: number): number => Math.round(x * 1e4) / 1e4;
@@ -184,7 +221,10 @@ class TriageEngine {
   private overallUrgency(top: TriageCondition[]): string {
     let worst = 'low';
     for (const c of top) {
-      if (c.prob >= 0.15 && URGENCY_ORDER[c.urgency] > URGENCY_ORDER[worst]) worst = c.urgency;
+      const threshold = URGENCY_THRESHOLD[c.urgency] ?? DEFAULT_URGENCY_THRESHOLD;
+      if (c.prob >= threshold && URGENCY_ORDER[c.urgency] > URGENCY_ORDER[worst]) {
+        worst = c.urgency;
+      }
     }
     return worst;
   }
@@ -215,10 +255,20 @@ class TriageEngine {
     }
     if (sym === null) done = true;
 
-    const specs: string[] = [];
+    let specs: string[] = [];
     for (const c of top) {
       if (!specs.includes(c.specialization)) specs.push(c.specialization);
     }
+
+    // Refuse to name a specialist we are not confident about. Vague free text
+    // ("not feeling well", "pain") seeds little or nothing, leaving a near-flat
+    // posterior — which previously still produced a specific specialty at ~17%
+    // confidence. A wrong specialist costs the patient a fee and a week, so below
+    // the threshold we say so and route to a GP who can examine them.
+    // Only applies once questioning is finished; a flat posterior mid-session is normal.
+    const lowConfidence =
+      done && (top.length === 0 || top[0].prob < MIN_CONFIDENCE_TO_NAME_SPECIALIST);
+    if (lowConfidence) specs = [FALLBACK_SPECIALIZATION];
 
     return {
       posterior: top,
@@ -229,6 +279,7 @@ class TriageEngine {
       done,
       urgency: this.overallUrgency(top),
       recommendedSpecializations: specs.slice(0, 3),
+      lowConfidence,
       askedCount: asked,
     };
   }

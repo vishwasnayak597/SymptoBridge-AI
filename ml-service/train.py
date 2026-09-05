@@ -84,23 +84,146 @@ def disease_meta(name: str) -> dict:
     return {"specialization": knowledge.DEFAULT_SPECIALIZATION, "urgency": knowledge.DEFAULT_URGENCY}
 
 
+def load_ddxplus(max_per_class: int | None, verbose: bool = True):
+    """
+    Load the DDXPlus release using its OFFICIAL train/test split.
+
+    Returns (X_tr, y_tr, X_te, y_te, symptoms, questions, disease_meta, extra_meta).
+
+    Note we do NOT call inject_noise() on this source: DDXPlus evidence patterns
+    already reflect realistic reporting, and bit-flipping would break the
+    mutual exclusivity of one-hot groups (e.g. flipping a patient into both
+    "pain is mild" and "pain is severe").
+    """
+    from data import ddxplus
+
+    print("Loading DDXPlus (train split)...")
+    X_tr, y_tr, fs, conditions = ddxplus.load_dataset(
+        "train", max_per_class=max_per_class, verbose=verbose
+    )
+    print("Loading DDXPlus (test split)...")
+    X_te, y_te, _, _ = ddxplus.load_dataset(
+        "test", max_per_class=None, verbose=verbose
+    )
+
+    classes = sorted(set(y_tr.tolist()))
+    disease_meta = ddxplus.build_disease_meta(conditions, classes)
+
+    extra = {
+        "dataset": "ddxplus",
+        "dataset_citation": ddxplus.CITATION,
+        "dataset_license": "CC BY 4.0",
+        "split": "official train/test",
+        "max_per_class": max_per_class,
+        "n_train": int(len(y_tr)),
+        "n_test": int(len(y_te)),
+    }
+    return X_tr, y_tr, X_te, y_te, fs.features, fs.questions, disease_meta, extra
+
+
+def load_union(max_per_class: int | None, seed: int, verbose: bool = True):
+    """
+    DDXPlus + the knowledge.py conditions DDXPlus has no label for.
+
+    Both sources are sampled into ONE shared feature space (see data/legacy_bridge.py),
+    so a zero means "symptom absent" for every patient rather than "this feature
+    belongs to the other dataset".
+    """
+    from data import ddxplus, legacy_bridge
+
+    missing = legacy_bridge.unmapped_symptoms()
+    if missing:
+        raise RuntimeError(
+            f"legacy symptoms with no DDXPlus mapping: {missing} — "
+            "add them to SYMPTOM_TO_FEATURES or EXTRA_SYMPTOM_MAP in legacy_bridge.py"
+        )
+
+    extra = legacy_bridge.EXTRA_FEATURES
+    per_class = max_per_class or 6000
+
+    print("Loading DDXPlus (train split)...")
+    X_ddx_tr, y_ddx_tr, fs, conditions = ddxplus.load_dataset(
+        "train", max_per_class=max_per_class, verbose=verbose, extra_features=extra
+    )
+    print("Loading DDXPlus (test split)...")
+    X_ddx_te, y_ddx_te, _, _ = ddxplus.load_dataset(
+        "test", max_per_class=None, verbose=verbose, extra_features=extra
+    )
+
+    print(f"Sampling {len(legacy_bridge.LEGACY_CONDITIONS)} legacy conditions "
+          f"into the shared space...")
+    X_leg_tr, y_leg_tr = legacy_bridge.generate(fs.features, per_class, seed=seed)
+    # held-out legacy patients from a different seed
+    X_leg_te, y_leg_te = legacy_bridge.generate(
+        fs.features, max(per_class // 4, 250), seed=seed + 1000
+    )
+    print(f"  legacy: {len(y_leg_tr)} train / {len(y_leg_te)} test across "
+          f"{len(set(y_leg_tr.tolist()))} conditions")
+
+    X_tr = np.vstack([X_ddx_tr, X_leg_tr])
+    y_tr = np.concatenate([y_ddx_tr, y_leg_tr])
+    X_te = np.vstack([X_ddx_te, X_leg_te])
+    y_te = np.concatenate([y_ddx_te, y_leg_te])
+
+    classes = sorted(set(y_tr.tolist()))
+    disease_meta = ddxplus.build_disease_meta(
+        conditions, [c for c in classes if c in conditions]
+    )
+    disease_meta.update(
+        legacy_bridge.build_disease_meta(
+            [c for c in classes if c not in conditions]
+        )
+    )
+
+    extra_meta = {
+        "dataset": "ddxplus+knowledge",
+        "dataset_citation": ddxplus.CITATION,
+        "dataset_license": "CC BY 4.0 (DDXPlus portion)",
+        "split": "DDXPlus official train/test + sampled legacy holdout",
+        "max_per_class": max_per_class,
+        "n_train": int(len(y_tr)),
+        "n_test": int(len(y_te)),
+        "n_ddxplus_conditions": len(conditions),
+        "n_legacy_conditions": len(legacy_bridge.LEGACY_CONDITIONS),
+        "legacy_conditions": legacy_bridge.LEGACY_CONDITIONS,
+        "legacy_dropped_as_duplicate": legacy_bridge.COVERED_BY_DDXPLUS,
+    }
+    return X_tr, y_tr, X_te, y_te, fs.features, fs.questions, disease_meta, extra_meta
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=["auto", "ddxplus", "union"], default="auto",
+                        help="'auto' = Kaggle CSVs if present else synthetic; 'ddxplus' = DDXPlus release")
     parser.add_argument("--noise", type=float, default=0.05, help="symptom-flip noise rate")
     parser.add_argument("--per-disease", type=int, default=400, help="synthetic cases per disease")
+    parser.add_argument("--max-per-class", type=int, default=6000,
+                        help="DDXPlus: cap rows per pathology (0 = no cap)")
+    parser.add_argument("--comparators", action="store_true",
+                        help="also fit RandomForest/MLP benchmarks (slow on DDXPlus)")
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    df, source, questions = load_data(args.per_disease)
-    symptoms = [c for c in df.columns if c != "prognosis"]
-    X = df[symptoms].astype(int).to_numpy()
-    y = df["prognosis"].astype(str).to_numpy()
+    ddx_meta: dict | None = None
 
-    X = inject_noise(X, args.noise, seed=args.seed)
-
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.2, random_state=args.seed, stratify=y
-    )
+    if args.source in ("ddxplus", "union"):
+        cap = None if args.max_per_class in (0, None) else args.max_per_class
+        loader = load_ddxplus if args.source == "ddxplus" else \
+            (lambda c: load_union(c, args.seed))
+        X_tr, y_tr, X_te, y_te, symptoms, questions, ddx_disease_meta, ddx_meta = loader(cap)
+        source = args.source
+        n_samples = len(y_tr) + len(y_te)
+    else:
+        df, source, questions = load_data(args.per_disease)
+        symptoms = [c for c in df.columns if c != "prognosis"]
+        X = df[symptoms].astype(int).to_numpy()
+        y = df["prognosis"].astype(str).to_numpy()
+        X = inject_noise(X, args.noise, seed=args.seed)
+        X_tr, X_te, y_tr, y_te = train_test_split(
+            X, y, test_size=0.2, random_state=args.seed, stratify=y
+        )
+        ddx_disease_meta = None
+        n_samples = len(df)
 
     # ---- primary model: Bernoulli Naive Bayes (served) ----
     nb = BernoulliNB(alpha=1.0)
@@ -113,8 +236,8 @@ def main() -> None:
     nb_pred = nb.predict(X_te)
     metrics = {
         "source": source,
-        "noise_rate": args.noise,
-        "n_samples": int(len(df)),
+        "noise_rate": args.noise if source != "ddxplus" else 0.0,
+        "n_samples": int(n_samples),
         "n_symptoms": len(symptoms),
         "n_diseases": len(classes),
         "naive_bayes": {
@@ -129,20 +252,24 @@ def main() -> None:
         },
     }
 
-    # ---- comparators (benchmark only, not served) ----
-    rf = RandomForestClassifier(n_estimators=200, random_state=args.seed, n_jobs=-1)
-    rf.fit(X_tr, y_tr)
-    metrics["random_forest"] = {
-        "accuracy": round(float(accuracy_score(y_te, rf.predict(X_te))), 4),
-        "top3_accuracy": round(top_k_accuracy(rf.predict_proba(X_te), y_te_idx, 3), 4),
-    }
+    if ddx_meta:
+        metrics["dataset"] = ddx_meta
 
-    mlp = MLPClassifier(hidden_layer_sizes=(64,), max_iter=300, random_state=args.seed)
-    mlp.fit(X_tr, y_tr)
-    metrics["mlp"] = {
-        "accuracy": round(float(accuracy_score(y_te, mlp.predict(X_te))), 4),
-        "top3_accuracy": round(top_k_accuracy(mlp.predict_proba(X_te), y_te_idx, 3), 4),
-    }
+    # ---- comparators (benchmark only, not served) ----
+    if args.comparators:
+        rf = RandomForestClassifier(n_estimators=200, random_state=args.seed, n_jobs=-1)
+        rf.fit(X_tr, y_tr)
+        metrics["random_forest"] = {
+            "accuracy": round(float(accuracy_score(y_te, rf.predict(X_te))), 4),
+            "top3_accuracy": round(top_k_accuracy(rf.predict_proba(X_te), y_te_idx, 3), 4),
+        }
+
+        mlp = MLPClassifier(hidden_layer_sizes=(64,), max_iter=300, random_state=args.seed)
+        mlp.fit(X_tr, y_tr)
+        metrics["mlp"] = {
+            "accuracy": round(float(accuracy_score(y_te, mlp.predict(X_te))), 4),
+            "top3_accuracy": round(top_k_accuracy(mlp.predict_proba(X_te), y_te_idx, 3), 4),
+        }
 
     # ---- persist served model (NB parameters for partial-evidence inference) ----
     model = {
@@ -151,7 +278,7 @@ def main() -> None:
         "class_log_prior": nb.class_log_prior_.tolist(),     # log P(disease)
         "feature_log_prob": nb.feature_log_prob_.tolist(),   # log P(symptom=1 | disease)
         "questions": questions,                              # symptom -> question text
-        "disease_meta": {c: disease_meta(c) for c in classes},
+        "disease_meta": ddx_disease_meta or {c: disease_meta(c) for c in classes},
         "metrics": metrics,
     }
     joblib.dump(model, MODEL_PATH)
@@ -161,12 +288,18 @@ def main() -> None:
 
     print("\n=== Training complete ===")
     print(f"source={source}  samples={metrics['n_samples']}  "
-          f"diseases={metrics['n_diseases']}  symptoms={metrics['n_symptoms']}  noise={args.noise}")
+          f"diseases={metrics['n_diseases']}  symptoms={metrics['n_symptoms']}  "
+          f"noise={metrics['noise_rate']}")
     print(f"Naive Bayes : acc={metrics['naive_bayes']['accuracy']}  "
           f"top3={metrics['naive_bayes']['top3_accuracy']}  "
           f"macroF1={metrics['naive_bayes']['macro_f1']}  brier={metrics['naive_bayes']['brier_score']}")
-    print(f"RandomForest: acc={metrics['random_forest']['accuracy']}  top3={metrics['random_forest']['top3_accuracy']}")
-    print(f"MLP         : acc={metrics['mlp']['accuracy']}  top3={metrics['mlp']['top3_accuracy']}")
+    if "random_forest" in metrics:
+        print(f"RandomForest: acc={metrics['random_forest']['accuracy']}  top3={metrics['random_forest']['top3_accuracy']}")
+    if "mlp" in metrics:
+        print(f"MLP         : acc={metrics['mlp']['accuracy']}  top3={metrics['mlp']['top3_accuracy']}")
+    if ddx_meta:
+        print(f"\nDataset     : {ddx_meta['dataset_citation']}")
+        print(f"              train={ddx_meta['n_train']}  test={ddx_meta['n_test']}  ({ddx_meta['split']})")
     print(f"Saved -> {MODEL_PATH}\n        {META_PATH}")
 
 

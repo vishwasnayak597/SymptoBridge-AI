@@ -44,7 +44,8 @@ interface Doctor {
   email?: string;
   name: string;
   specialization: string;
-  rating: number;
+  /** null when the doctor has no ratings yet — never substitute a default score. */
+  rating: number | null;
   reviewCount: number;
   experience: number;
   consultationFee: number;
@@ -134,7 +135,10 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
           email: doc.email,
           name: `Dr. ${doc.firstName} ${doc.lastName}`,
           specialization: doc.specialization || 'General Practice',
-          rating: doc.rating || 4.5,
+          // Do NOT invent a score. `doc.rating || 4.5` showed every unrated doctor a
+          // flattering 4.5 stars, which is fabricated social proof on a medical
+          // booking decision. null means "no ratings yet" and renders as such.
+          rating: typeof doc.rating === 'number' ? doc.rating : null,
           reviewCount: doc.reviewCount || 0,
           experience: doc.experience || 0,
           consultationFee: doc.consultationFee || 500,
@@ -226,7 +230,8 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
         case 'distance':
           return a.location.distance - b.location.distance;
         case 'rating':
-          return b.rating - a.rating;
+          // Unrated doctors sort last rather than to the top as a 0.
+          return (b.rating ?? -1) - (a.rating ?? -1);
         case 'price':
           return a.consultationFee - b.consultationFee;
         default:
@@ -406,13 +411,13 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
               key={doctor.id}
               className={`card hover-lift ${
                 isDemoPatient && (doctor.email || '').toLowerCase() === DEMO_DOCTOR_EMAIL
-                  ? 'ring-2 ring-[#E8765A]'
+                  ? 'ring-2 ring-[#E8590C]'
                   : ''
               }`}
             >
               <div className="card-body">
                 {isDemoPatient && (doctor.email || '').toLowerCase() === DEMO_DOCTOR_EMAIL && (
-                  <div className="mb-3 inline-flex items-center gap-1 rounded-full bg-[#E8765A]/10 px-2.5 py-0.5 text-xs font-semibold text-[#E8765A]">
+                  <div className="mb-3 inline-flex items-center gap-1 rounded-full bg-[#E8590C]/10 px-2.5 py-0.5 text-xs font-semibold text-[#E8590C]">
                     <SparklesIcon className="h-3.5 w-3.5" />
                     Recommended for your demo — book here
                   </div>
@@ -431,12 +436,19 @@ const DoctorSearch: React.FC<DoctorSearchProps> = ({
                     
                     {/* Rating */}
                     <div className="flex items-center mt-2">
-                      <div className="flex items-center mr-2">
-                        {renderStars(doctor.rating)}
-                      </div>
-                      <span className="text-sm text-gray-600">
-                        {doctor.rating} ({doctor.reviewCount} reviews)
-                      </span>
+                      {doctor.rating === null ? (
+                        <span className="text-sm text-gray-500">Not yet rated</span>
+                      ) : (
+                        <>
+                          <div className="flex items-center mr-2">
+                            {renderStars(doctor.rating)}
+                          </div>
+                          <span className="text-sm text-gray-600">
+                            {doctor.rating.toFixed(1)} ({doctor.reviewCount}{' '}
+                            {doctor.reviewCount === 1 ? 'review' : 'reviews'})
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
