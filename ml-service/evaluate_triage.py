@@ -171,7 +171,10 @@ def load_test_patients(fs, limit: int):
                 fs.encode(tokens, vec)
                 feats = {fs.features[j] for j in np.nonzero(vec)[0]}
                 if feats:
-                    yield (row.get("PATHOLOGY") or "").strip(), feats
+                    # Apply the same label rewrites used at ingestion, or the test set
+                    # scores classes the model was never trained to emit.
+                    label = (row.get("PATHOLOGY") or "").strip()
+                    yield ddxplus._RELABEL.get(label, label), feats
 
 
 def main() -> None:
