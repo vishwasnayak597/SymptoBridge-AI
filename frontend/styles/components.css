@@ -12,7 +12,7 @@
 }
 
 .btn-secondary {
-  @apply btn bg-stone-200 text-stone-700 hover:bg-stone-300 focus:ring-stone-400 shadow-key-muted;
+  @apply btn bg-stone-50 text-stone-700 border-stone-300 hover:bg-white focus:ring-stone-400 shadow-key-muted;
 }
 
 .btn-outline {
@@ -639,7 +639,7 @@
 }
 
 .btn-secondary {
-  @apply btn bg-stone-200 text-stone-700 hover:bg-stone-300 focus:ring-stone-400 shadow-key-muted;
+  @apply btn bg-stone-50 text-stone-700 border-stone-300 hover:bg-white focus:ring-stone-400 shadow-key-muted;
 }
 
 .btn-outline {

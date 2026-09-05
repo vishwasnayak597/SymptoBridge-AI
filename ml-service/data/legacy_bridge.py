@@ -41,6 +41,19 @@ import knowledge  # noqa: E402
 # Keeping both would create duplicate classes that split probability mass — e.g.
 # legacy "Heart Attack" competing with DDXPlus "Possible NSTEMI / STEMI" means
 # neither reaches the confidence threshold and triage never stops early.
+# Background probability for the ~310 features a legacy condition says nothing about.
+#
+# knowledge.BASE_RATE is 0.04, which was fine in the original 44-feature space (~1.5
+# spurious positives per patient). In the 318-feature union space it means each
+# synthetic legacy patient picks up ~12 random symptoms on top of their ~6 real ones
+# — twice as much noise as signal. Measured effect: legacy conditions became
+# statistically indistinguishable and were confused with clinically unrelated
+# neighbours (Sciatica -> COVID-19, Kidney Stone -> Tension Headache).
+#
+# 0.005 keeps a little realistic noise (~1.6 spurious findings) without drowning the
+# signal. DDXPlus conditions are unaffected — they carry 15-50 learned features.
+BACKGROUND_RATE = 0.005
+
 COVERED_BY_DDXPLUS = {
     "Angina": "Stable angina / Unstable angina",
     "Asthma": "Bronchospasm / acute asthma exacerbation",
@@ -50,6 +63,19 @@ COVERED_BY_DDXPLUS = {
     "Heart Attack": "Possible NSTEMI / STEMI",
     "Influenza": "Influenza",
     "Pneumonia": "Pneumonia",
+    # DDXPlus's "Scombroid food poisoning" is the same patient-facing complaint and
+    # the same specialty. Keeping both split the class: measured 0.50 top-1 with 1.00
+    # top-3, i.e. the model always knew it was one of the pair and reliably chose
+    # wrong. DDXPlus's version is REAL data, so that one survives (see RELABEL below)
+    # and the hand-written one is dropped.
+    "Food Poisoning": "Scombroid food poisoning",
+}
+
+# DDXPlus label -> the patient-facing name we serve. Applied at ingestion, so the
+# DDXPlus training rows are kept; only the label changes. "Scombroid" is a specific
+# fish-toxin reaction no patient would recognise or search for.
+RELABEL_DDXPLUS: dict[str, str] = {
+    "Scombroid food poisoning": "Food Poisoning",
 }
 
 # The 11 that DDXPlus genuinely cannot represent. These are mostly the common,
@@ -172,7 +198,7 @@ def condition_feature_probs(condition: str, feature_index: dict[str, int]) -> np
     both mean E_173), probabilities combine as a noisy-OR: the feature is present if
     ANY contributing symptom is present.
     """
-    probs = np.full(len(feature_index), knowledge.BASE_RATE, dtype=float)
+    probs = np.full(len(feature_index), BACKGROUND_RATE, dtype=float)
     absent = np.ones(len(feature_index), dtype=float)   # P(no contributor fired)
     touched = np.zeros(len(feature_index), dtype=bool)
 

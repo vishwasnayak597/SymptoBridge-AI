@@ -292,6 +292,14 @@ def _parse_evidences(raw: str) -> list[str]:
     return out
 
 
+# A few DDXPlus labels are renamed to what a patient would recognise. Imported
+# lazily so this module keeps working without the legacy bridge.
+try:  # pragma: no cover - trivial import guard
+    from data.legacy_bridge import RELABEL_DDXPLUS as _RELABEL
+except Exception:  # noqa: BLE001
+    _RELABEL = {}
+
+
 def _iter_patients(zip_name: str):
     """Yield (pathology, evidence_tokens, age, sex) from a DDXPlus patient zip."""
     path = _require(zip_name)
@@ -315,7 +323,7 @@ def _iter_patients(zip_name: str):
                 if not tokens:
                     continue
                 yield (
-                    row[i_path].strip(),
+                    _RELABEL.get(row[i_path].strip(), row[i_path].strip()),
                     tokens,
                     row[i_age] if i_age is not None and len(row) > i_age else None,
                     row[i_sex] if i_sex is not None and len(row) > i_sex else None,

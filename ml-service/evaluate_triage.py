@@ -180,6 +180,8 @@ def main() -> None:
     ap.add_argument("--max-questions", type=int, default=8)
     ap.add_argument("--confident", type=float, default=0.70)
     ap.add_argument("--urgent", type=float, default=0.45)
+    ap.add_argument("--per-condition", action="store_true",
+                    help="break results down by individual condition, worst first")
     ap.add_argument("--seed-findings", type=int, default=3,
                     help="findings the opening free-text description supplies (real range 2-7)")
     ap.add_argument("--sweep", action="store_true",
@@ -227,6 +229,10 @@ def main() -> None:
         asked_total = 0
         reasons: Counter = Counter()
         per_spec: dict[str, list[int]] = defaultdict(list)
+        # Per-CONDITION scoring: a specialty average can look healthy while an
+        # individual condition inside it is never reached at all.
+        per_cond: dict[str, dict] = defaultdict(lambda: {'n': 0, 'top1': 0, 'top3': 0, 'spec': 0})
+        confusions: dict[str, Counter] = defaultdict(Counter)
 
         asked_counts: list[int] = []
         for truth, feats in patients:
@@ -244,6 +250,17 @@ def main() -> None:
             spec_hit += hit
             if true_spec:
                 per_spec[true_spec].append(hit)
+
+            if not hit and names:
+                # What is it actually being mistaken FOR? Fixing a weak condition
+                # means knowing which neighbour is stealing it, not guessing.
+                confusions[truth][f"{names[0]}  [{pred_spec}]"] += 1
+
+            c = per_cond[truth]
+            c['n'] += 1
+            c['top1'] += int(bool(names) and names[0] == truth)
+            c['top3'] += int(truth in names)
+            c['spec'] += hit
 
             true_urg = model["disease_meta"].get(truth, {}).get("urgency", "medium")
             if URGENCY_ORDER.get(true_urg, 1) >= URGENCY_ORDER["urgent"]:
@@ -276,6 +293,35 @@ def main() -> None:
             print(f"{k}q:{100*hist[k]/n:.0f}%  ", end="")
         print()
         print(f"  stop reason     : {dict(reasons.most_common())}")
+
+        if args.per_condition:
+            # A specialty average can look healthy while a single condition inside
+            # it is never reached at all — so score every condition on its own.
+            print("\n  per-condition, worst first — top1 / top3 / specialist:")
+            rows = []
+            for name, c in per_cond.items():
+                meta = model["disease_meta"].get(name, {})
+                rows.append((
+                    c["spec"] / c["n"], c["top1"] / c["n"], c["top3"] / c["n"], c["n"],
+                    name, meta.get("specialization", "?"), meta.get("urgency", "?"),
+                    meta.get("source") == "knowledge.py",
+                ))
+            for sp, t1, t3, cnt, name, spec, urg, legacy in sorted(rows):
+                flag = "  <-- BAD" if sp < 0.60 else ("  <-- weak" if sp < 0.80 else "")
+                tag = " [legacy]" if legacy else ""
+                print(f"    {t1:.2f} {t3:.2f} {sp:.2f}  ({cnt:5d})  {name[:34]:34s} "
+                      f"{spec[:22]:22s} {urg:7s}{tag}{flag}")
+
+        if args.per_condition:
+            print("\n  where the weak conditions actually go:")
+            weak = sorted(
+                (c["spec"] / c["n"], name) for name, c in per_cond.items()
+                if c["spec"] / c["n"] < 0.85
+            )
+            for sp, name in weak:
+                print(f"\n    {name}  (specialist {sp:.2f})")
+                for wrong, cnt in confusions[name].most_common(4):
+                    print(f"        {cnt:4d}x -> {wrong}")
 
         if not args.sweep:
             print("\n  per-specialty recall:")
