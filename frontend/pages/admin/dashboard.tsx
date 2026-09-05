@@ -626,9 +626,10 @@ const AdminDashboard: React.FC = () => {
         <meta name="description" content="Admin dashboard for managing platform and users" />
       </Head>
 
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-shell px-3 py-4 sm:px-6 sm:py-6">
+        <div className="max-w-7xl mx-auto bg-cream rounded-[26px] shadow-strong overflow-hidden">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b">
+        <header className="border-b border-stone-300/70">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center py-4">
               <Link
@@ -664,7 +665,7 @@ const AdminDashboard: React.FC = () => {
         </header>
 
         {/* Navigation */}
-        <nav className="bg-white border-b border-gray-200">
+        <nav>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex space-x-8 overflow-x-auto">
               {[
@@ -678,10 +679,10 @@ const AdminDashboard: React.FC = () => {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
                   aria-current={activeTab === tab.id ? 'page' : undefined}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm flex-shrink-0 whitespace-nowrap ${
+                  className={`flex items-center space-x-2 py-2.5 px-4 rounded-t-xl font-bold text-sm flex-shrink-0 whitespace-nowrap ${
                     activeTab === tab.id
                       ? 'border-purple-500 text-purple-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      : 'text-stone-500 hover:text-stone-700 hover:bg-stone-200/50'
                   }`}
                 >
                   <tab.icon className="h-5 w-5" />
@@ -693,13 +694,14 @@ const AdminDashboard: React.FC = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="bg-cream px-4 sm:px-6 py-6 min-h-[60vh]">
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'users' && renderUsers()}
           {activeTab === 'analytics' && <AnalyticsPanel stats={stats} />}
           {activeTab === 'system' && <SystemPanel />}
           {activeTab === 'reports' && <AuditLogPanel />}
         </main>
+        </div>
       </div>
 
       {/* Notification Panel */}

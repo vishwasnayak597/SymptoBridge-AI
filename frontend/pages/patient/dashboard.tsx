@@ -673,28 +673,34 @@ const PatientDashboard: React.FC = () => {
       {/* Video Call Invitation Banner - Always at the very top */}
       {renderVideoCallInvitation()}
 
-      <div className="min-h-screen bg-gray-50" style={{ paddingTop: activeVideoCallInvitation ? '80px' : '0' }}>
+      {/* Instrument shell: the app sits as a single device panel on a darker body,
+          rather than as full-bleed bands across the page. */}
+      <div
+        className="min-h-screen bg-shell px-3 py-4 sm:px-6 sm:py-6"
+        style={{ paddingTop: activeVideoCallInvitation ? '80px' : undefined }}
+      >
+        <div className="max-w-7xl mx-auto bg-cream rounded-[26px] shadow-strong overflow-hidden">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <header className="border-b border-stone-300/70">
+          <div className="px-5 sm:px-7">
             <div className="flex justify-between items-center py-4">
               <Link
                 href="/"
                 aria-label="Go to SymptoBridge home"
-                className="flex items-center space-x-4 group focus:outline-none focus-visible:ring-2 focus-visible:ring-coral-500 rounded-lg"
+                className="flex items-center space-x-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-ember-500 rounded-lg"
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center transition-transform group-hover:scale-105">
-                  <span className="text-white font-bold text-lg">S</span>
+                <div className="w-9 h-9 bg-stone-900 rounded-[10px] flex items-center justify-center transition-transform group-hover:scale-105">
+                  <span className="text-ember-500 font-extrabold text-lg">S</span>
                 </div>
                 <div>
-                  <span className="text-xl font-bold gradient-text">SymptoBridge</span>
+                  <span className="text-xl font-extrabold tracking-tight text-stone-900">SymptoBridge</span>
                   <span className="text-sm text-gray-600 ml-2">Patient Portal</span>
                 </div>
               </Link>
-              
+
               <div className="flex items-center space-x-4">
                 <div className="hidden md:flex items-center space-x-2">
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                  <div className="w-8 h-8 bg-stone-200 rounded-[9px] flex items-center justify-center text-stone-700 font-bold text-sm">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </div>
                   <span className="text-gray-700">Welcome, {user?.firstName}!</span>
@@ -710,10 +716,10 @@ const PatientDashboard: React.FC = () => {
           </div>
         </header>
 
-        {/* Navigation Tabs */}
-        <nav className="bg-white border-b" aria-label="Dashboard sections">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex space-x-8 overflow-x-auto">
+        {/* Navigation Tabs — folder tabs attached to the content panel below */}
+        <nav aria-label="Dashboard sections">
+          <div className="px-3 sm:px-5 pt-3">
+            <div className="flex gap-1 overflow-x-auto">
               {[
                 { id: 'overview', label: 'Overview', icon: HeartIcon },
                 { id: 'symptom-checker', label: 'AI Symptom Checker', icon: SparklesIcon },
@@ -729,10 +735,10 @@ const PatientDashboard: React.FC = () => {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
                     aria-current={activeTab === tab.id ? 'page' : undefined}
-                    className={`flex items-center space-x-2 py-4 px-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
+                    className={`flex items-center space-x-2 py-2.5 px-4 rounded-t-xl font-bold text-sm whitespace-nowrap transition-colors ${
                       activeTab === tab.id
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'bg-cream text-stone-900 shadow-[inset_0_2px_0_theme(colors.ember.500)]'
+                        : 'text-stone-500 hover:text-stone-700 hover:bg-stone-200/50'
                     }`}
                   >
                     <Icon className="h-4 w-4" />
@@ -744,8 +750,8 @@ const PatientDashboard: React.FC = () => {
           </div>
         </nav>
 
-        {/* Main Content */}
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Main Content — the panel the folder tabs attach to */}
+        <main className="bg-cream px-4 sm:px-6 py-6 min-h-[60vh]">
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'symptom-checker' && (
             <SymptomChecker 
@@ -794,6 +800,7 @@ const PatientDashboard: React.FC = () => {
             />
           )}
         </main>
+        </div>
       </div>
 
              {/* Appointment Booking Modal */}
