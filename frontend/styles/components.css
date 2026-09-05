@@ -4,7 +4,7 @@
 
 /* Button Components */
 .btn {
-  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none disabled:translate-y-0 disabled:border-transparent;
 }
 
 .btn-primary {
@@ -143,7 +143,7 @@
 
 /* Card Components */
 .card {
-  @apply bg-stone-100 rounded-2xl shadow-soft border-0 overflow-hidden;
+  @apply bg-stone-50 rounded-2xl shadow-soft border-0 overflow-hidden;
 }
 
 .card-flat {
@@ -631,7 +631,7 @@
 
 /* Button Components */
 .btn {
-  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-bold rounded-xl transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-stone-100 active:translate-y-[3px] active:shadow-none disabled:cursor-not-allowed disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none disabled:translate-y-0 disabled:border-transparent;
 }
 
 .btn-primary {
@@ -770,7 +770,7 @@
 
 /* Card Components */
 .card {
-  @apply bg-stone-100 rounded-2xl shadow-soft border-0 overflow-hidden;
+  @apply bg-stone-50 rounded-2xl shadow-soft border-0 overflow-hidden;
 }
 
 .card-flat {

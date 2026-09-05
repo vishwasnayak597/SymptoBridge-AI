@@ -17,6 +17,8 @@ severity conflates "how bad is this disease" with "how fast must you act"
 """
 from __future__ import annotations
 
+import re
+
 # The 16 specializations the platform actually staffs. Keep in sync with
 # backend/src/routes/admin-specializations.ts.
 SUPPORTED_SPECIALIZATIONS = {
@@ -136,86 +138,109 @@ def route(condition_name: str) -> tuple[str, str]:
 #
 # Rules are ordered; the FIRST matching keyword wins, so specific terms are listed
 # before general ones.
+# Matching is WORD-ANCHORED. Plain substring matching silently mis-binned a third of
+# the vocabulary: "ear" matched "for(ear)m" and "face" matched "palmar (face) of the
+# wrist", so forearm and wrist pain were encoded as HEAD pain. With the arm folded
+# into the head bucket, head pain stopped discriminating anything and "I have a
+# headache" produced a flat differential of sinusitis / pharyngitis / epiglottitis.
+#
+# Rules are ordered and FIRST MATCH WINS, so specific structures (eye, ear, throat)
+# are listed before the broad ones they sit inside.
 REGION_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("eye",   (r"eyes?", r"eyebrows?", r"eyelids?", r"orbit")),
+    ("ear",   (r"ears?", r"tympan\w*", r"mastoid")),
+    ("throat", (
+        r"pharynx", r"tonsils?", r"uvula", r"palace", r"palate", r"larynx",
+        r"tongue", r"throat",
+    )),
+    ("face", (
+        r"cheeks?", r"nose", r"nostrils?", r"chin", r"jaws?", r"gums?", r"teeth",
+        r"tooth", r"lips?", r"commissures?", r"vermilion", r"mouth",
+    )),
     ("head", (
-        "forehead", "temple", "occiput", "back of head", "top of the head",
-        "skull", "scalp", "eye", "eyebrow", "eyelid", "nose", "nostril",
-        "cheek", "chin", "jaw", "ear", "tongue", "gum", "teeth", "tooth",
-        "lip", "vermilion", "commissure", "palate", "palace", "uvula",
-        "tonsil", "pharynx", "mouth", "face",
+        r"forehead", r"temples?", r"occiput", r"skull", r"scalp", r"head",
     )),
-    ("neck", (
-        "neck", "cervical", "thyroid", "trachea", "larynx", "throat",
-        "trapezius",
-    )),
+    ("neck",  (r"neck", r"cervical", r"thyroid", r"trachea")),
     ("chest", (
-        "chest", "sternum", "breast", "rib", "thorax", "pectoral", "clavicle",
-        "axilla", "shoulder blade", "scapula",
+        r"chest", r"sternum", r"breasts?", r"ribs?", r"thorax", r"pectoral",
+        r"clavicle", r"axilla", r"scapula",
     )),
     ("abdomen", (
-        "belly", "abdom", "epigastric", "hypochondrium", "umbilic", "flank",
-        "iliac fossa", "stomach", "navel",
+        r"belly", r"abdom\w*", r"epigastric", r"hypochondrium", r"umbilic\w*",
+        r"flank", r"fossa", r"stomach", r"navel",
     )),
-    ("back", (
-        "back", "spine", "lumbar", "thoracic spine", "loin", "renal fossa",
-    )),
+    ("back",  (r"back", r"spine", r"lumbar", r"loin", r"trapezius")),
     ("pelvis", (
-        "groin", "pubis", "penis", "glans", "testicle", "scrotum", "vagina",
-        "vulva", "labia", "clitoris", "hymen", "perineum", "anus", "rectum",
-        "urethra", "buttock", "coccyx", "sacrum", "iliac wing", "iliac crest",
-        "hip", "bladder",
+        r"groin", r"pubis", r"penis", r"glans", r"testicles?", r"scrotum",
+        r"vagina", r"vulva", r"labia\w*", r"clitoris", r"hymen", r"perineum",
+        r"anus", r"rectum", r"buttocks?", r"coccyx", r"sacrum", r"wing",
+        r"crest", r"hips?", r"bladder", r"urethra", r"vaginal", r"vulval", r"vestibule",
     )),
     ("arm", (
-        "shoulder", "arm", "biceps", "triceps", "elbow", "forearm", "wrist",
-        "hand", "finger", "thumb", "palm",
+        r"shoulders?", r"arms?", r"forearms?", r"biceps", r"triceps", r"elbows?",
+        r"wrists?", r"hands?", r"fingers?", r"thumbs?", r"palm\w*",
     )),
     ("leg", (
-        "thigh", "knee", "popliteal", "calf", "shin", "tibia", "leg", "ankle",
-        "foot", "sole", "toe", "heel", "hamstring", "ischio", "quadriceps",
+        r"thighs?", r"knees?", r"calf", r"calves", r"shins?", r"legs?", r"ankles?",
+        r"foot", r"feet", r"toes?", r"heels?", r"hamstrings?", r"ischio\w*", r"soles?", r"tibia",
+        r"quadriceps",
     )),
-    ("generalised", ("everywhere", "generalis", "generaliz", "diffuse")),
+    ("generalised", (r"nowhere", r"everywhere", r"generalis\w*", r"generaliz\w*", r"diffuse")),
 ]
 
 REGIONS: list[str] = [name for name, _ in REGION_RULES] + ["other"]
 
-# Natural-language names for the regions, used to build patient-facing questions.
+# Patient-facing wording for each region, used to build readable questions
+# ("Do you feel pain in your throat?" rather than "...in your throat region?").
 REGION_LABELS: dict[str, str] = {
-    "head": "head or face",
-    "neck": "neck or throat",
+    "eye": "eye",
+    "ear": "ear",
+    "throat": "throat",
+    "face": "face or jaw",
+    "head": "head",
+    "neck": "neck",
     "chest": "chest",
     "abdomen": "stomach area",
     "back": "back",
-    "pelvis": "pelvis or groin",
+    "pelvis": "hip or groin",
     "arm": "arm or hand",
     "leg": "leg or foot",
-    "generalised": "whole body",
-    "other": "somewhere else",
+    "generalised": "all over",
+    "other": "that area",
 }
 
-# Values meaning "absent" / "not applicable". These must NOT become positive
-# features: in a Bernoulli model, absence of every E_55__* bit already encodes
-# "no pain anywhere". Encoding 'nowhere' as a positive region would tell the
-# model a patient with no pain DOES have pain, somewhere.
-# "N" is DDXPlus's explicit negative for yes/no categoricals (E_135 "lesion larger
-# than 1cm": N/Y; E_204 travel: N + 11 regions). Encoding it positively would create
-# a feature meaning "travelled to N".
+# ---------------------------------------------------------------------------
+# Absent / affirmative value labels
+# ---------------------------------------------------------------------------
+# DDXPlus spells "no finding" several ways. "N" is its explicit negative for
+# yes/no categoricals (E_135 lesion size: N/Y; E_204 travel: N + 11 regions).
+# Encoding any of these positively would tell the model that a painless patient
+# has pain, and that someone who has not travelled travelled to a country
+# called "N".
 NULL_VALUE_LABELS = {"nowhere", "na", "n/a", "none", "", "n", "no"}
 
 # The affirmative half of a DDXPlus yes/no categorical.
 TRUE_VALUE_LABELS = {"y", "yes"}
 
 
-def is_null_value(value_label: str) -> bool:
-    return (value_label or "").strip().lower() in NULL_VALUE_LABELS
+def is_null_value(label: str) -> bool:
+    """True when a value means 'absent' and should set no feature bit."""
+    return (label or "").strip().lower() in NULL_VALUE_LABELS
+
+# One compiled, word-anchored alternation per region.
+_REGION_PATTERNS = [
+    (name, re.compile(r"\b(?:" + "|".join(kws) + r")\b"))
+    for name, kws in REGION_RULES
+]
 
 
 def region_of(value_label: str) -> str:
-    """Bin a DDXPlus location label (e.g. 'iliac fossa(R)') to a coarse region."""
-    v = (value_label or "").strip().lower()
-    for name, keywords in REGION_RULES:
-        for kw in keywords:
-            if kw in v:
-                return name
+    """Bin a DDXPlus location label (e.g. 'iliac fossa(R)') to an anatomical region."""
+    # Laterality suffixes carry no diagnostic weight and break \b anchoring.
+    v = re.sub(r"\((?:l|r|d|g)\)", " ", (value_label or "").strip().lower())
+    for name, pattern in _REGION_PATTERNS:
+        if pattern.search(v):
+            return name
     return "other"
 
 

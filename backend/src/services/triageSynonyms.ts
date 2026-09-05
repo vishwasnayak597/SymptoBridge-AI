@@ -153,9 +153,17 @@ export const LAY_PHRASES: Array<[RegExp, string[]]> = [
 // substrings of common English: an unanchored /shin/ matches "cru(shin)g", so
 // "crushing chest pain" seeded leg pain. Anchor anatomy; only the compound-forming
 // terms ("head" in "headache", "abdom" in "abdominal") are allowed to run free.
+// The head used to be one bucket of 44 locations. It is now split into head /
+// face / eye / ear / throat, because those distinguish very different conditions
+// (a headache is not sinusitis is not pharyngitis) and lumping them was why
+// "I have a headache" produced a flat differential.
 export const PAIN_REGIONS: Array<[RegExp, string]> = [
-  [/\bheads?\b|headache|forehead|migraine|\btemples?\b|skull|\bfaces?\b|\bjaws?\b|\btooth\b|\bteeth\b|\bears?\b|\beyes?\b/, 'E_55__head'],
-  [/\bnecks?\b|\bthroats?\b/, 'E_55__neck'],
+  [/\bheads?\b|headache|forehead|migraine|\btemples?\b|skull|\bscalp\b/, 'E_55__head'],
+  [/\bfaces?\b|\bjaws?\b|\bcheeks?\b|\btooth\b|\bteeth\b|\bnose\b|\bchin\b|\bmouth\b|\blips?\b|\bgums?\b|sinus/, 'E_55__face'],
+  [/\beyes?\b|eyeball|eyelid/, 'E_55__eye'],
+  [/\bears?\b|earache/, 'E_55__ear'],
+  [/\bthroats?\b|tonsil|swallow|pharyn/, 'E_55__throat'],
+  [/\bnecks?\b/, 'E_55__neck'],
   [/\bchest\b|\bribs?\b|\bbreasts?\b|sternum/, 'E_55__chest'],
   [/stomach|\btummy\b|\bbelly\b|abdom|\bgut\b|epigastr|\bflanks?\b/, 'E_55__abdomen'],
   [/\bback\b|\bspine\b|lumbar/, 'E_55__back'],

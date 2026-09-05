@@ -113,6 +113,27 @@ describe('lay-phrase seeding', () => {
     expect(seed('severe headache and light hurts my eyes').has('L_photophobia')).toBe(true);
   });
 
+  // The head bucket originally swallowed 44 locations including the forearm and
+  // wrist (substring matching: "ear" inside "for(ear)m"). With the arm mixed into
+  // head pain, head pain discriminated nothing and "I have a headache" returned a
+  // flat differential of sinusitis / pharyngitis / epiglottitis. These pin the split.
+  it('separates head from face, eye, ear and throat', () => {
+    expect(seed('I have a headache').has('E_55__head')).toBe(true);
+    expect(seed('I have a headache').has('E_55__face')).toBe(false);
+    expect(seed('my throat hurts').has('E_55__throat')).toBe(true);
+    expect(seed('my throat hurts').has('E_55__head')).toBe(false);
+    expect(seed('pain behind my eye').has('E_55__eye')).toBe(true);
+    expect(seed('earache').has('E_55__ear')).toBe(true);
+    expect(seed('my jaw and cheek hurt').has('E_55__face')).toBe(true);
+  });
+
+  it('does not put arm pain in the head', () => {
+    const s = seed('pain in my forearm and wrist');
+    expect(s.has('E_55__arm')).toBe(true);
+    expect(s.has('E_55__head')).toBe(false);
+    expect(s.has('E_55__face')).toBe(false);
+  });
+
   it('recognises opaque DDXPlus ids', () => {
     expect(isOpaqueEvidenceId('E_91')).toBe(true);
     expect(isOpaqueEvidenceId('E_55__chest')).toBe(true);

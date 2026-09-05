@@ -681,7 +681,7 @@ const PatientDashboard: React.FC = () => {
       >
         <div className="max-w-7xl mx-auto bg-cream rounded-[26px] shadow-strong overflow-hidden">
         {/* Header */}
-        <header className="border-b border-stone-300/70">
+        <header className="bg-stone-200 border-b border-stone-300/70">
           <div className="px-5 sm:px-7">
             <div className="flex justify-between items-center py-4">
               <Link
@@ -717,7 +717,7 @@ const PatientDashboard: React.FC = () => {
         </header>
 
         {/* Navigation Tabs — folder tabs attached to the content panel below */}
-        <nav aria-label="Dashboard sections">
+        <nav className="bg-stone-200" aria-label="Dashboard sections">
           <div className="px-3 sm:px-5 pt-3">
             <div className="flex gap-1 overflow-x-auto">
               {[
@@ -735,9 +735,9 @@ const PatientDashboard: React.FC = () => {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as TabType)}
                     aria-current={activeTab === tab.id ? 'page' : undefined}
-                    className={`flex items-center space-x-2 py-2.5 px-4 rounded-t-xl font-bold text-sm whitespace-nowrap transition-colors ${
+                    className={`flex items-center space-x-2 py-2.5 px-4 rounded-t-xl border-t-2 border-transparent font-bold text-sm whitespace-nowrap transition-colors ${
                       activeTab === tab.id
-                        ? 'bg-cream text-stone-900 shadow-[inset_0_2px_0_theme(colors.ember.500)]'
+                        ? 'bg-cream text-stone-900 !border-ember-500'
                         : 'text-stone-500 hover:text-stone-700 hover:bg-stone-200/50'
                     }`}
                   >
