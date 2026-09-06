@@ -13,6 +13,7 @@ import AppointmentsList from '../../features/appointments/AppointmentsList';
 import { Appointment } from '../../features/appointments/types';
 import { formatAppointmentDate, getStatusColor } from '../../features/appointments/utils';
 import PrescriptionsList from '../../features/prescriptions/PrescriptionsList';
+import BookingAgentPanel from '../../features/booking-agent/BookingAgentPanel';
 import { usePrescriptions } from '../../features/prescriptions/usePrescriptions';
 import ReportsPanel from '../../features/reports/ReportsPanel';
 import { useReports } from '../../features/reports/useReports';
@@ -114,7 +115,7 @@ const PatientDashboard: React.FC = () => {
   
   // Prescriptions and reports are owned by their feature hooks; the overview
   // only needs counts/previews, and React Query dedupes with the tab panels.
-  const { prescriptions } = usePrescriptions(!!user);
+  const { prescriptions, isLoading: prescriptionsLoading } = usePrescriptions(!!user);
   const { reports: uploadedReports } = useReports(!!user);
   const [reminders, setReminders] = useState<Reminder[]>(dummyReminders);
   const [recommendedSpecializations, setRecommendedSpecializations] = useState<string[]>([]);
@@ -352,7 +353,9 @@ const PatientDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Active Prescriptions</p>
-              <p className="text-2xl font-bold text-gray-900">{prescriptions.length}</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {prescriptions.filter((p) => p.status === 'active').length}
+              </p>
             </div>
             <div className="p-2 bg-purple-100 rounded-lg">
               <DocumentTextIcon className="h-6 w-6 text-purple-600" />
@@ -564,22 +567,25 @@ const PatientDashboard: React.FC = () => {
                 </button>
               </div>
               <div className="space-y-3">
+                {prescriptions.length === 0 && (
+                  <p className="text-sm text-gray-500">No prescriptions yet.</p>
+                )}
                 {prescriptions.slice(0, 2).map((prescription) => (
-                  <div key={prescription.id} className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                    <h4 className="text-sm font-medium text-gray-900 mb-2">{prescription.diagnosis}</h4>
+                  <div key={prescription.id} className="p-3 bg-stone-100 border-l-[3px] border-ember-300 rounded-r-lg">
+                    <div className="flex justify-between items-baseline mb-2 gap-2">
+                      <h4 className="text-sm font-semibold text-gray-900">{prescription.doctorName}</h4>
+                      <span className="text-xs text-gray-500 shrink-0">
+                        {new Date(prescription.date).toLocaleDateString()}
+                      </span>
+                    </div>
                     <div className="space-y-1">
                       {prescription.medications.slice(0, 2).map((med, index) => (
-                        <div key={index} className="flex justify-between text-xs">
+                        <div key={index} className="flex justify-between text-xs gap-2">
                           <span className="text-gray-700">{med.name}</span>
-                          <span className="text-gray-600">{med.dosage} - {med.frequency}</span>
+                          <span className="text-gray-600 shrink-0">{med.dosage} · {med.frequency}</span>
                         </div>
                       ))}
                     </div>
-                    {prescription.nextFollowUp && (
-                      <p className="text-xs text-orange-600 mt-2">
-                        Next follow-up: {new Date(prescription.nextFollowUp).toLocaleDateString()}
-                      </p>
-                    )}
                   </div>
                 ))}
               </div>
@@ -772,6 +778,9 @@ const PatientDashboard: React.FC = () => {
                   </p>
                 </div>
               )}
+              {/* Accelerator for the search below, not a replacement — the full
+                  filter UI stays visible and usable underneath. */}
+              <BookingAgentPanel onBooked={invalidateAppointments} />
               <DoctorSearch
                 onBookAppointment={handleDoctorBooking}
                 recommendedSpecializations={recommendedSpecializations}
@@ -788,6 +797,7 @@ const PatientDashboard: React.FC = () => {
           {activeTab === 'prescriptions' && (
             <PrescriptionsList
               prescriptions={prescriptions}
+              isLoading={prescriptionsLoading}
               onRequestNew={() => setActiveTab('find-doctors')}
             />
           )}

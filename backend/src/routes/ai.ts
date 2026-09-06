@@ -3,8 +3,10 @@ import { body, validationResult } from 'express-validator';
 import { AIService } from '../services/AIService';
 import { MCPService } from '../services/MCPService';
 import { startTriage, answerTriage, getTriageMeta } from '../services/TriageService';
+import { runBookingAgent, confirmProposal, SlotTakenError } from '../services/BookingAgentService';
 
 import { authenticate } from '../middleware/auth';
+import { idempotent } from '../middleware/idempotency';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -321,6 +323,78 @@ router.post('/triage/answer', [
   } catch (error) {
     console.error('Error advancing triage:', error);
     res.status(503).json({ success: false, error: 'Triage model service unavailable. Please try again.' });
+  }
+});
+
+/**
+ * POST /api/ai/booking-agent
+ * Natural-language appointment search. Returns proposals — books nothing.
+ */
+router.post('/booking-agent', [
+  authenticate,
+  body('query').isString().trim().isLength({ min: 3, max: 400 }).withMessage('query is required'),
+  body('lat').optional().isFloat(),
+  body('lng').optional().isFloat(),
+  body('urgent').optional().isBoolean(),
+], async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: 'Validation failed', data: errors.array() });
+    }
+    if (req.user!.role !== 'patient') {
+      return res.status(403).json({ success: false, error: 'Only patients can book appointments' });
+    }
+
+    const result = await runBookingAgent({
+      patientId: req.user!._id.toString(),
+      query: req.body.query,
+      lat: req.body.lat !== undefined ? Number(req.body.lat) : undefined,
+      lng: req.body.lng !== undefined ? Number(req.body.lng) : undefined,
+      urgent: Boolean(req.body.urgent),
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Booking agent failed:', error);
+    res.status(500).json({ success: false, error: 'Could not search for appointments right now' });
+  }
+});
+
+/**
+ * POST /api/ai/booking-agent/confirm
+ * The write gate: turns a proposal the patient clicked into a real appointment.
+ * The agent itself has no route to this.
+ */
+router.post('/booking-agent/confirm', [
+  authenticate,
+  body('proposalId').isString().notEmpty(),
+  body('symptoms').optional().isString().trim().isLength({ max: 1000 }),
+  // Reaches the appointment document, so it is checked here rather than left to
+  // Mongoose to reject with a 500-shaped error.
+  body('consultationType').optional().isIn(['in-person', 'video', 'phone']),
+], idempotent('booking-agent'), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: 'Validation failed', data: errors.array() });
+    }
+    if (req.user!.role !== 'patient') {
+      return res.status(403).json({ success: false, error: 'Only patients can book appointments' });
+    }
+
+    const appointment = await confirmProposal(req.body.proposalId, req.user!._id.toString(), {
+      symptoms: req.body.symptoms,
+      consultationType: req.body.consultationType,
+    });
+    res.status(201).json({ success: true, data: appointment, message: 'Appointment booked' });
+  } catch (error) {
+    if (error instanceof SlotTakenError) {
+      return res.status(409).json({ success: false, error: 'That slot was just taken. Please pick another option.' });
+    }
+    const message = error instanceof Error ? error.message : 'Could not confirm the booking';
+    console.error('Booking confirmation failed:', error);
+    res.status(400).json({ success: false, error: message });
   }
 });
 

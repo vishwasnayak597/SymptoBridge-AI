@@ -320,7 +320,7 @@ const SymptomChecker: React.FC<SymptomCheckerProps> = ({
         </div>
       </div>
 
-      {/* New: trained-model sequential triage (live-narrowing differential) */}
+      {/* Trained-model sequential triage: questions in, specialist recommendation out */}
       {triageStarted && (
         <TriageWizard
           symptoms={symptoms}

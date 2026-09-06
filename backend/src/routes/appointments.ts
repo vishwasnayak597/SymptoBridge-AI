@@ -7,6 +7,7 @@ import { idempotent } from '../middleware/idempotency';
 import { createAppointmentSchema, appointmentRatingSchema, joinWaitlistSchema } from '../../../shared/schemas';
 import { WaitlistService } from '../services/WaitlistService';
 import { buildTriageSummary } from '../services/TriageService';
+import { availabilityForDoctor, availabilityForDoctors, isValidDateString } from '../services/SlotService';
 import mongoose from 'mongoose';
 import {Appointment} from '../models/Appointment';
 
@@ -88,6 +89,40 @@ router.get('/stats', [authenticate], async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching appointment stats:', error);
     res.status(500).json({ success: false, error: error instanceof Error ? error.message : 'Failed to fetch appointment statistics' });
+  }
+});
+
+/**
+ * Availability for MANY doctors across a date range, in one query.
+ *
+ * MUST stay above `GET /:id` — it is a single path segment, so `/:id` would otherwise
+ * match it first and reject the request as unauthenticated before it ever runs.
+ * Public, like the single-doctor availability route below it.
+ */
+router.get('/availability-batch', async (req: Request, res: Response) => {
+  try {
+    const ids = String(req.query.doctorIds || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const from = String(req.query.from || '');
+    const to = String(req.query.to || from);
+
+    if (ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'doctorIds is required' });
+    }
+    if (ids.length > 40) {
+      return res.status(400).json({ success: false, error: 'At most 40 doctors per request' });
+    }
+    if (!isValidDateString(from) || !isValidDateString(to)) {
+      return res.status(400).json({ success: false, error: 'Invalid date format. Use YYYY-MM-DD' });
+    }
+
+    const availability = await availabilityForDoctors(ids, from, to);
+    res.json({ success: true, data: { from, to, availability } });
+  } catch (error) {
+    console.error('Error checking batch availability:', error);
+    res.status(500).json({ success: false, error: 'Server error while checking availability' });
   }
 });
 
@@ -239,7 +274,7 @@ router.post('/:id/rating', authenticate, validate(appointmentRatingSchema), asyn
 router.get('/availability/:doctorId/:date', async (req: Request, res: Response) => {
   try {
     const { doctorId, date } = req.params;
-    
+
     // Validate doctor ID
     if (!mongoose.Types.ObjectId.isValid(doctorId)) {
       return res.status(400).json({ success: false, error: 'Invalid doctor ID' });
@@ -251,70 +286,15 @@ router.get('/availability/:doctorId/:date', async (req: Request, res: Response) 
       return res.status(400).json({ success: false, error: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    // Create date range for the entire day
-    const startDate = new Date(date + 'T00:00:00.000Z');
-    const endDate = new Date(date + 'T23:59:59.999Z');
-
     // Check if date is in the past
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    if (startDate < today) {
+    if (new Date(date + 'T00:00:00.000Z') < today) {
       return res.status(400).json({ success: false, error: 'Cannot check availability for past dates' });
     }
 
-    // Find all existing appointments for this doctor on this date
-    const existingAppointments = await Appointment.find({
-      doctor: new mongoose.Types.ObjectId(doctorId),
-      appointmentDate: {
-        $gte: startDate,
-        $lte: endDate
-      },
-      status: { $in: ['scheduled', 'confirmed'] }
-    }).select('appointmentDate duration');
-
-    // Define available time slots (can be made configurable per doctor later)
-    const allTimeSlots = [
-      '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-      '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-      '17:00', '17:30', '18:00', '18:30'
-    ];
-
-    // Check each slot for conflicts
-    const availableSlots = allTimeSlots.filter(timeSlot => {
-      const slotDateTime = new Date(date + 'T' + timeSlot + ':00.000Z');
-      
-      // If it's today, check if the slot is in the future
-      if (startDate.toDateString() === today.toDateString()) {
-        const now = new Date();
-        if (slotDateTime <= now) {
-          return false; // Past time slot
-        }
-      }
-
-      // Check for conflicts with existing appointments
-      const hasConflict = existingAppointments.some(appointment => {
-        const appointmentStart = new Date(appointment.appointmentDate);
-        const appointmentEnd = new Date(appointmentStart.getTime() + (appointment.duration || 30) * 60000);
-        const slotEnd = new Date(slotDateTime.getTime() + 30 * 60000); // 30 min default slot
-        
-        // Check if slots overlap
-        return (slotDateTime < appointmentEnd && slotEnd > appointmentStart);
-      });
-
-      return !hasConflict;
-    });
-
-    res.json({
-      success: true,
-      data: {
-        date,
-        doctorId,
-        allSlots: allTimeSlots,
-        availableSlots,
-        bookedSlots: allTimeSlots.filter(slot => !availableSlots.includes(slot))
-      }
-    });
-
+    // Same slot maths as the batch route — one implementation, in SlotService.
+    res.json({ success: true, data: await availabilityForDoctor(doctorId, date) });
   } catch (error) {
     console.error('Error checking appointment availability:', error);
     res.status(500).json({ success: false, error: 'Server error while checking availability' });

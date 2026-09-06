@@ -7,6 +7,8 @@ import NotificationPanel from '../../components/NotificationPanel';
 import DoctorScheduleCalendar from '../../components/DoctorScheduleCalendar';
 import { apiClient } from '../../lib/api';
 import { useUnreadNotificationCount, useSetUnreadCount } from '../../hooks/useNotifications';
+import { doctorDisplayName } from '../../features/prescriptions/usePrescriptions';
+import { conditionDisplayName } from '../../lib/conditionNames';
 import {
   UsersIcon,
   CalendarDaysIcon,
@@ -91,6 +93,16 @@ interface TimeSlot {
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+// Dosage / frequency / duration are `required` on the Prescription schema, so a blank
+// one is rejected server-side — the form collects and enforces all three.
+const EMPTY_PRESCRIPTION = {
+  medications: '',
+  dosage: '',
+  frequency: '',
+  instructions: '',
+  duration: '',
+};
+
 const DoctorDashboard: React.FC = () => {
   const { user, logout } = useAuthContext();
   const notificationCount = useUnreadNotificationCount(!!user);
@@ -130,12 +142,7 @@ const DoctorDashboard: React.FC = () => {
   // Appointment filtering and prescription states
   const [appointmentFilter, setAppointmentFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [showPrescriptionModal, setShowPrescriptionModal] = useState(false);
-  const [prescriptionData, setPrescriptionData] = useState({
-    medications: '',
-    dosage: '',
-    instructions: '',
-    duration: ''
-  });
+  const [prescriptionData, setPrescriptionData] = useState(EMPTY_PRESCRIPTION);
   const [selectedAppointmentForPrescription, setSelectedAppointmentForPrescription] = useState<Appointment | null>(null);
 
   // Fetch appointments with useCallback to prevent re-creation
@@ -469,44 +476,58 @@ const DoctorDashboard: React.FC = () => {
   // Handle prescription creation
   const handleCreatePrescription = async () => {
     if (!selectedAppointmentForPrescription) return;
-    
+
+    // Parse medications from text input
+    const medicationsArray = prescriptionData.medications
+      .split('\n')
+      .filter(med => med.trim())
+      .map(med => ({
+        name: med.trim(),
+        dosage: prescriptionData.dosage.trim(),
+        frequency: prescriptionData.frequency.trim(),
+        duration: prescriptionData.duration.trim(),
+        instructions: prescriptionData.instructions.trim()
+      }));
+
+    if (medicationsArray.length === 0) {
+      setProfileError('Add at least one medication.');
+      return;
+    }
+    if (medicationsArray.some(m => !m.dosage || !m.frequency || !m.duration)) {
+      setProfileError('Dosage, frequency and duration are required.');
+      return;
+    }
+
     try {
       setProfileLoading(true);
-      
-      // Parse medications from text input
-      const medicationsArray = prescriptionData.medications
-        .split('\n')
-        .filter(med => med.trim())
-        .map(med => ({
-          name: med.trim(),
-          dosage: prescriptionData.dosage,
-          frequency: 'As prescribed',
-          duration: prescriptionData.duration,
-          instructions: prescriptionData.instructions
-        }));
-      
+      setProfileError('');
+
       const response = await apiClient.post('/prescriptions', {
         patient: selectedAppointmentForPrescription.patient._id,
         appointment: selectedAppointmentForPrescription._id,
         medications: medicationsArray,
-        generalInstructions: prescriptionData.instructions
+        generalInstructions: prescriptionData.instructions.trim()
       });
-      
+
       if (response.data.success) {
         setProfileSuccess('Prescription created successfully!');
         setShowPrescriptionModal(false);
-        setPrescriptionData({
-          medications: '',
-          dosage: '',
-          instructions: '',
-          duration: ''
-        });
-        // Refresh appointments to get updated data
-        await fetchAppointments();
+        setPrescriptionData(EMPTY_PRESCRIPTION);
+        // Pull the patient's prescriptions back so the new one shows in their record
+        await Promise.all([
+          fetchAppointments(),
+          fetchPatientMedicalData(selectedAppointmentForPrescription.patient._id),
+        ]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating prescription:', error);
-      setProfileError('Failed to create prescription');
+      // Surface the server's reason (validation errors name the offending field)
+      // instead of a blanket failure the doctor can't act on.
+      const data = error?.response?.data;
+      const detail = Array.isArray(data?.errors)
+        ? data.errors.map((e: any) => `${e.field}: ${e.message}`).join(', ')
+        : data?.message;
+      setProfileError(detail ? `Failed to create prescription — ${detail}` : 'Failed to create prescription');
     } finally {
       setProfileLoading(false);
     }
@@ -516,12 +537,8 @@ const DoctorDashboard: React.FC = () => {
   const handleOpenPrescriptionModal = (appointment: Appointment) => {
     setSelectedAppointmentForPrescription(appointment);
     setShowPrescriptionModal(true);
-    setPrescriptionData({
-      medications: '',
-      dosage: '',
-      instructions: '',
-      duration: ''
-    });
+    setProfileError('');
+    setPrescriptionData(EMPTY_PRESCRIPTION);
   };
 
   // Fixed useEffect with proper dependencies to prevent multiple calls
@@ -889,7 +906,7 @@ const DoctorDashboard: React.FC = () => {
                               {appointment.triageSummary.conditions.slice(0, 4).map((c) => (
                                 <div key={c.disease}>
                                   <div className="flex justify-between text-sm">
-                                    <span className="text-gray-800">{c.disease}</span>
+                                    <span className="text-gray-800">{conditionDisplayName(c.disease)}</span>
                                     <span className="tabular-nums text-gray-500">{Math.round(c.prob * 100)}%</span>
                                   </div>
                                   <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
@@ -1150,9 +1167,16 @@ const DoctorDashboard: React.FC = () => {
               {patientPrescriptions[selectedPatient._id]?.length > 0 ? (
                 patientPrescriptions[selectedPatient._id].map((prescription: any) => (
                   <div key={prescription.id || prescription._id} className="border-l-4 border-green-500 bg-green-50 p-4 rounded-r-lg">
-                    <div className="flex justify-between items-start mb-2">
-                      <h4 className="font-semibold text-gray-900">{prescription.diagnosis || 'No diagnosis specified'}</h4>
-                      <span className="text-sm text-gray-600">
+                    <div className="flex justify-between items-start mb-2 gap-3">
+                      <div className="min-w-0">
+                        <h4 className="font-semibold text-gray-900">
+                          {doctorDisplayName(prescription.doctor)}
+                        </h4>
+                        {prescription.prescriptionNumber && (
+                          <span className="font-mono text-xs text-gray-500">{prescription.prescriptionNumber}</span>
+                        )}
+                      </div>
+                      <span className="text-sm text-gray-600 shrink-0">
                         {prescription.date ? new Date(prescription.date).toLocaleDateString() : 'No date'}
                       </span>
                     </div>
@@ -1177,9 +1201,9 @@ const DoctorDashboard: React.FC = () => {
                         </div>
                       )}
                     </div>
-                    {prescription.nextFollowUp && (
-                      <p className="text-sm text-green-600 mt-2">
-                        <strong>Next Follow-up:</strong> {new Date(prescription.nextFollowUp).toLocaleDateString()}
+                    {prescription.generalInstructions && (
+                      <p className="text-sm text-gray-700 mt-2">
+                        <strong>Notes:</strong> {prescription.generalInstructions}
                       </p>
                     )}
                   </div>
@@ -1782,7 +1806,9 @@ const DoctorDashboard: React.FC = () => {
              
              <div className="space-y-4">
                <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Medications</label>
+                 <label className="block text-sm font-medium text-gray-700 mb-2">
+                   Medications <span className="text-gray-500 font-normal">(one per line)</span>
+                 </label>
                  <textarea
                    className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
                    rows={3}
@@ -1791,106 +1817,42 @@ const DoctorDashboard: React.FC = () => {
                    placeholder="Enter medication names..."
                  ></textarea>
                </div>
-               
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Dosage</label>
-                 <input
-                   type="text"
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   value={prescriptionData.dosage}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, dosage: e.target.value }))}
-                   placeholder="e.g., 500mg twice daily"
-                 />
-               </div>
-               
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Instructions</label>
-                 <textarea
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   rows={3}
-                   value={prescriptionData.instructions}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, instructions: e.target.value }))}
-                   placeholder="Special instructions for the patient..."
-                 ></textarea>
-               </div>
-               
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
-                 <input
-                   type="text"
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   value={prescriptionData.duration}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, duration: e.target.value }))}
-                   placeholder="e.g., 7 days, 2 weeks"
-                 />
-               </div>
-             </div>
-             
-             <div className="flex justify-end space-x-3 mt-6">
-               <button
-                 onClick={() => setShowPrescriptionModal(false)}
-                 className="btn-secondary"
-               >
-                 Cancel
-               </button>
-               <button
-                 onClick={handleCreatePrescription}
-                 disabled={profileLoading || !prescriptionData.medications}
-                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
-               >
-                 {profileLoading ? 'Creating...' : 'Create Prescription'}
-               </button>
-             </div>
-           </div>
-         </div>
-       )}
 
-       {/* Prescription Modal */}
-       {showPrescriptionModal && selectedAppointmentForPrescription && (
-         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-           <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-             <div className="flex justify-between items-center mb-4">
-               <h3 className="text-lg font-semibold text-gray-900">Create Prescription</h3>
-               <button
-                 onClick={() => setShowPrescriptionModal(false)}
-                 className="p-2 text-gray-400 hover:text-gray-600"
-               >
-                 <XMarkIcon className="h-6 w-6" />
-               </button>
-             </div>
-             
-             <div className="mb-4">
-               <p className="text-sm text-gray-600">
-                 Patient: <strong>{selectedAppointmentForPrescription.patient?.firstName} {selectedAppointmentForPrescription.patient?.lastName}</strong>
-               </p>
-               <p className="text-sm text-gray-600">
-                 Date: <strong>{formatDate(selectedAppointmentForPrescription.appointmentDate)}</strong>
-               </p>
-             </div>
-             
-             <div className="space-y-4">
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Medications</label>
-                 <textarea
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   rows={3}
-                   value={prescriptionData.medications}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, medications: e.target.value }))}
-                   placeholder="Enter medication names..."
-                 ></textarea>
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Dosage *</label>
+                   <input
+                     type="text"
+                     className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
+                     value={prescriptionData.dosage}
+                     onChange={(e) => setPrescriptionData(prev => ({ ...prev, dosage: e.target.value }))}
+                     placeholder="e.g., 500mg"
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Frequency *</label>
+                   <input
+                     type="text"
+                     className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
+                     value={prescriptionData.frequency}
+                     onChange={(e) => setPrescriptionData(prev => ({ ...prev, frequency: e.target.value }))}
+                     placeholder="e.g., Twice daily"
+                   />
+                 </div>
+
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-2">Duration *</label>
+                   <input
+                     type="text"
+                     className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
+                     value={prescriptionData.duration}
+                     onChange={(e) => setPrescriptionData(prev => ({ ...prev, duration: e.target.value }))}
+                     placeholder="e.g., 7 days"
+                   />
+                 </div>
                </div>
-               
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Dosage</label>
-                 <input
-                   type="text"
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   value={prescriptionData.dosage}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, dosage: e.target.value }))}
-                   placeholder="e.g., 500mg twice daily"
-                 />
-               </div>
-               
+
                <div>
                  <label className="block text-sm font-medium text-gray-700 mb-2">Instructions</label>
                  <textarea
@@ -1901,19 +1863,14 @@ const DoctorDashboard: React.FC = () => {
                    placeholder="Special instructions for the patient..."
                  ></textarea>
                </div>
-               
-               <div>
-                 <label className="block text-sm font-medium text-gray-700 mb-2">Duration</label>
-                 <input
-                   type="text"
-                   className="w-full border border-gray-300 rounded-md p-3 focus:ring-blue-500 focus:border-blue-500"
-                   value={prescriptionData.duration}
-                   onChange={(e) => setPrescriptionData(prev => ({ ...prev, duration: e.target.value }))}
-                   placeholder="e.g., 7 days, 2 weeks"
-                 />
-               </div>
              </div>
-             
+
+             {profileError && (
+               <p className="mt-4 text-sm text-error-600 bg-error-50 border border-error-200 rounded-md px-3 py-2">
+                 {profileError}
+               </p>
+             )}
+
              <div className="flex justify-end space-x-3 mt-6">
                <button
                  onClick={() => setShowPrescriptionModal(false)}
@@ -1923,7 +1880,7 @@ const DoctorDashboard: React.FC = () => {
                </button>
                <button
                  onClick={handleCreatePrescription}
-                 disabled={profileLoading || !prescriptionData.medications}
+                 disabled={profileLoading || !prescriptionData.medications.trim()}
                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
                >
                  {profileLoading ? 'Creating...' : 'Create Prescription'}
