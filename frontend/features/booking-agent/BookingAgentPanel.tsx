@@ -36,11 +36,35 @@ interface Constraints {
   to: string;
   maxKm?: number;
   preferSoonest?: boolean;
+  daysOfWeek?: number[];
+  afterTime?: string;
+  beforeTime?: string;
+  corrections?: Array<{ from: string; to: string }>;
+}
+
+/** Constraint keys the server lets a patient drop. `from`/`to` are not droppable. */
+type DroppableKey =
+  | 'specialization'
+  | 'maxFee'
+  | 'minRating'
+  | 'maxKm'
+  | 'daysOfWeek'
+  | 'afterTime'
+  | 'beforeTime';
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function clockLabel(clock: string): string {
+  const [h, m] = clock.split(':').map(Number);
+  const suffix = h >= 12 ? 'pm' : 'am';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return m ? `${hour12}:${String(m).padStart(2, '0')}${suffix}` : `${hour12}${suffix}`;
 }
 
 interface AgentResult {
   constraints: Constraints;
   steps: AgentStep[];
+  summary: string;
   proposals: Proposal[];
   noMatchReason?: string;
   plannedBy: 'gemini' | 'rules';
@@ -65,13 +89,18 @@ function formatSlot(proposal: Proposal): string {
 }
 
 /** The parsed request, as chips the patient can drop when the agent misreads them. */
-function constraintChips(c: Constraints): Array<{ key: keyof Constraints; label: string }> {
-  const chips: Array<{ key: keyof Constraints; label: string }> = [];
+function constraintChips(c: Constraints): Array<{ key: DroppableKey | 'dates'; label: string }> {
+  const chips: Array<{ key: DroppableKey | 'dates'; label: string }> = [];
   if (c.specialization) chips.push({ key: 'specialization', label: c.specialization });
   if (c.maxFee) chips.push({ key: 'maxFee', label: `≤ ₹${c.maxFee}` });
   if (c.minRating) chips.push({ key: 'minRating', label: `${c.minRating}★ and up` });
   if (c.maxKm) chips.push({ key: 'maxKm', label: `within ${c.maxKm} km` });
-  chips.push({ key: 'from', label: `${c.from} → ${c.to}` });
+  if (c.daysOfWeek?.length) {
+    chips.push({ key: 'daysOfWeek', label: c.daysOfWeek.map((d) => DAY_NAMES[d]).join(' / ') });
+  }
+  if (c.afterTime) chips.push({ key: 'afterTime', label: `after ${clockLabel(c.afterTime)}` });
+  if (c.beforeTime) chips.push({ key: 'beforeTime', label: `before ${clockLabel(c.beforeTime)}` });
+  chips.push({ key: 'dates', label: `${c.from} → ${c.to}` });
   return chips;
 }
 
@@ -95,7 +124,7 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [booked, setBooked] = useState<Proposal | null>(null);
-  const [dropped, setDropped] = useState<Set<string>>(new Set());
+  const [dropped, setDropped] = useState<Set<DroppableKey>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Steps stream over the socket while the tools run — a 5-15s wait with no feedback
@@ -110,17 +139,19 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
     };
   }, []);
 
-  const run = async (text: string, overrides?: Partial<Constraints>) => {
+  const run = async (text: string, dropKeys: DroppableKey[] = []) => {
     if (!text.trim() || running) return;
     setRunning(true);
     setError('');
     setBooked(null);
     setResult(null);
     setLiveSteps([]);
+    // A fresh search starts from a clean parse; only a chip drop carries keys forward.
+    setDropped(new Set(dropKeys));
     try {
       const response = await apiClient.post(
         '/ai/booking-agent',
-        { query: text, ...overrides },
+        { query: text, ...(dropKeys.length ? { drop: dropKeys } : {}) },
         { timeout: 90000 }
       );
       setResult(response.data.data);
@@ -155,15 +186,19 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
     }
   };
 
-  const dropChip = (key: string) => {
+  // Dropping a chip is the repair path for a misparse. The key must go to the SERVER —
+  // re-running the same sentence locally would just re-derive the constraint.
+  const dropChip = (key: DroppableKey) => {
     const next = new Set(dropped);
     next.add(key);
     setDropped(next);
-    // Re-running without the dropped constraint is the repair path for a misparse.
-    run(query, { [key]: undefined } as Partial<Constraints>);
+    run(query, Array.from(next) as DroppableKey[]);
   };
 
   const steps = result?.steps?.length ? result.steps : liveSteps;
+  // Step-by-step only while something is actually pending, or when Gemini did the
+  // planning and the run was long enough to warrant the narration.
+  const showFullTrace = (running && steps.length > 0) || result?.plannedBy === 'gemini';
 
   return (
     <div className="bg-stone-50 rounded-2xl shadow-soft p-5 mb-6">
@@ -223,8 +258,13 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
         </div>
       )}
 
-      {/* The trace: what it actually did, so the result is checkable rather than magic. */}
-      {steps.length > 0 && !booked && (
+      {/*
+        The trace says what it actually did, so the result is checkable rather than
+        magic — but it only earns four lines when there is a wait to cover. Gemini
+        planning is several tool rounds; the rules path answers in under a second and
+        gets the same information as one line.
+      */}
+      {showFullTrace && !booked && (
         <ol className="mt-4 space-y-1.5">
           {steps.map((step, i) => (
             <li key={i} className="flex items-start gap-2 text-sm">
@@ -244,21 +284,37 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
         </ol>
       )}
 
+      {!showFullTrace && result && !booked && (
+        <p className="mt-4 flex items-start gap-2 text-sm text-stone-600">
+          <CheckCircleIcon className="h-4 w-4 text-moss-500 mt-0.5 shrink-0" />
+          {result.summary}
+        </p>
+      )}
+
       {result && !booked && (
         <>
-          <div className="flex flex-wrap items-center gap-2 mt-4">
+          {/* A spelling guess is shown explicitly — a silently corrected word is how
+              someone ends up booked into the wrong speciality. */}
+          {result.constraints.corrections?.map((correction) => (
+            <p key={correction.from} className="mt-4 text-sm text-stone-600">
+              Read <span className="font-semibold">“{correction.from}”</span> as{' '}
+              <span className="font-semibold">{correction.to}</span>. Not right? Remove the chip below.
+            </p>
+          ))}
+
+          <div className="flex flex-wrap items-center gap-2 mt-3">
             <span className="text-xs text-stone-500">Understood as:</span>
             {constraintChips(result.constraints)
-              .filter((chip) => !dropped.has(chip.key as string))
+              .filter((chip) => !dropped.has(chip.key as DroppableKey))
               .map((chip) => (
                 <span
-                  key={chip.key as string}
+                  key={chip.key}
                   className="inline-flex items-center gap-1 text-xs bg-stone-200 text-stone-700 rounded-full pl-3 pr-1.5 py-1"
                 >
                   {chip.label}
-                  {chip.key !== 'from' && (
+                  {chip.key !== 'dates' && (
                     <button
-                      onClick={() => dropChip(chip.key as string)}
+                      onClick={() => dropChip(chip.key as DroppableKey)}
                       className="hover:bg-stone-300 rounded-full p-0.5"
                       aria-label={`Remove ${chip.label}`}
                     >

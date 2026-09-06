@@ -336,6 +336,8 @@ router.post('/booking-agent', [
   body('lat').optional().isFloat(),
   body('lng').optional().isFloat(),
   body('urgent').optional().isBoolean(),
+  body('drop').optional().isArray({ max: 8 }),
+  body('drop.*').isIn(['specialization', 'maxFee', 'minRating', 'maxKm', 'daysOfWeek', 'afterTime', 'beforeTime']),
 ], async (req: Request, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -352,6 +354,7 @@ router.post('/booking-agent', [
       lat: req.body.lat !== undefined ? Number(req.body.lat) : undefined,
       lng: req.body.lng !== undefined ? Number(req.body.lng) : undefined,
       urgent: Boolean(req.body.urgent),
+      drop: req.body.drop,
     });
 
     res.status(200).json({ success: true, data: result });

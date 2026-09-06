@@ -144,6 +144,57 @@ describe('runBookingAgent', () => {
     expect(result.proposals.every((p) => p.doctorId !== pricyId || p.fee === 2500)).toBe(true);
   });
 
+  /**
+   * Regression for the live failure: "gastraentologist this week on friday saturday
+   * after 5pm" returned General Medicine and Pediatrics doctors at 9:00 AM on a Sunday.
+   */
+  it('respects a misspelt speciality plus day and time filters', async () => {
+    const { patientId } = await seedDirectory();
+    await User.create({
+      email: 'gastro@test.com',
+      password: 'SuperSecret123!',
+      firstName: 'Gut',
+      lastName: 'Doc',
+      role: 'doctor',
+      specialization: 'Gastroenterology',
+      licenseNumber: 'LIC-G',
+      consultationFee: 900,
+      rating: 4.2,
+      isEmailVerified: true,
+      isActive: true,
+    });
+
+    const result = await runBookingAgent({
+      patientId,
+      query: 'gastraentologist this week on friday saturday after 5pm',
+    });
+
+    expect(result.constraints.specialization).toBe('Gastroenterology');
+    expect(result.proposals.length).toBeGreaterThan(0);
+
+    for (const proposal of result.proposals) {
+      expect(proposal.specialization).toBe('Gastroenterology');
+      const day = new Date(`${proposal.date}T00:00:00.000Z`).getUTCDay();
+      expect([5, 6]).toContain(day); // Friday or Saturday only
+      expect(proposal.time >= '17:00').toBe(true); // after 5pm only
+    }
+  });
+
+  it('drops a constraint the patient dismissed instead of re-deriving it', async () => {
+    const { patientId, dermId } = await seedDirectory();
+
+    const withFilter = await runBookingAgent({ patientId, query: 'skin doctor under 400' });
+    expect(withFilter.proposals).toHaveLength(0); // the dermatologist charges 500
+
+    const dropped = await runBookingAgent({
+      patientId,
+      query: 'skin doctor under 400',
+      drop: ['maxFee'],
+    });
+    expect(dropped.constraints.maxFee).toBeUndefined();
+    expect(dropped.proposals.map((p) => p.doctorId)).toContain(dermId);
+  });
+
   it('produces a step trace describing what it did', async () => {
     const { patientId } = await seedDirectory();
     const result = await runBookingAgent({ patientId, query: 'cardiologist under ₹800' });
@@ -151,6 +202,28 @@ describe('runBookingAgent', () => {
     expect(result.steps.length).toBeGreaterThanOrEqual(2);
     expect(result.steps.some((s) => /calendar/i.test(s.label))).toBe(true);
     expect(result.plannedBy).toBe('rules'); // no GEMINI_API_KEY in tests
+  });
+
+  it('summarises the whole run in one line for the fast path', async () => {
+    const { patientId } = await seedDirectory();
+    const result = await runBookingAgent({
+      patientId,
+      query: 'cardiologist under ₹800 on friday after 5pm',
+    });
+
+    // Names what was searched, how much was open, and the narrowing filters — the
+    // four-line trace collapsed into the line the UI actually renders.
+    expect(result.summary).toMatch(/^Checked \d+ Cardiology calendars? · \d+ slots? on Fri, after 5pm$/);
+  });
+
+  it('summarises the no-match cases too', async () => {
+    const { patientId } = await seedDirectory();
+
+    const noDoctors = await runBookingAgent({ patientId, query: 'an oncologist under ₹100' });
+    expect(noDoctors.summary).toContain('No Oncology doctors match');
+
+    const noSlots = await runBookingAgent({ patientId, query: 'cardiologist before 8am' });
+    expect(noSlots.summary).toMatch(/0 slots before 8am/);
   });
 });
 

@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import User from '../models/User';
 import { Appointment } from '../models/Appointment';
 import { availabilityForDoctors, dateRange, TIME_SLOTS } from '../services/SlotService';
-import { parseWithRules } from '../services/BookingAgentService';
+import { parseWithRules, slotMatches, editDistance } from '../services/BookingAgentService';
 
 /** A future day that is safely not today, so "past slot" filtering never interferes. */
 function futureDate(daysAhead = 3): string {
@@ -159,5 +159,143 @@ describe('parseWithRules', () => {
     const c = parseWithRules('I need to see someone');
     expect(c.specialization).toBeUndefined();
     expect(c.maxFee).toBeUndefined();
+  });
+
+  // Regression: this exact sentence returned General Medicine doctors on a Sunday
+  // morning, ignoring the speciality, both named days and the time of day.
+  it('handles a misspelt speciality with day and time filters', () => {
+    const c = parseWithRules('gastraentologist this week on friday saturday after 5pm');
+
+    expect(c.specialization).toBe('Gastroenterology');
+    expect(c.daysOfWeek).toEqual([5, 6]);
+    expect(c.afterTime).toBe('17:00');
+  });
+
+  it('matches specialities on word-initial stems only', () => {
+    // "gastraentologist" contains "ent" — it must not route to an ENT clinic.
+    expect(parseWithRules('gastraentologist').specialization).toBe('Gastroenterology');
+    expect(parseWithRules('cardialogist').specialization).toBe('Cardiology');
+    expect(parseWithRules('ENT doctor').specialization).toBe('ENT (Ear, Nose & Throat)');
+    expect(parseWithRules('sore throat').specialization).toBe('ENT (Ear, Nose & Throat)');
+  });
+
+  it('reads time-of-day phrasings', () => {
+    expect(parseWithRules('doctor after 5pm').afterTime).toBe('17:00');
+    expect(parseWithRules('doctor before 11 am').beforeTime).toBe('11:00');
+    expect(parseWithRules('morning appointment').beforeTime).toBe('12:00');
+    const afternoon = parseWithRules('afternoon appointment');
+    expect(afternoon.afterTime).toBe('12:00');
+    expect(afternoon.beforeTime).toBe('17:00');
+    expect(parseWithRules('evening slot').afterTime).toBe('17:00');
+  });
+
+  it('widens the window so a named weekday actually exists in it', () => {
+    const c = parseWithRules('dentist today on friday');
+    expect(c.daysOfWeek).toEqual([5]);
+    const from = new Date(`${c.from}T00:00:00.000Z`);
+    const to = new Date(`${c.to}T00:00:00.000Z`);
+    let hasFriday = false;
+    for (let d = new Date(from); d <= to; d.setUTCDate(d.getUTCDate() + 1)) {
+      if (d.getUTCDay() === 5) hasFriday = true;
+    }
+    expect(hasFriday).toBe(true);
+  });
+});
+
+describe('typo tolerance', () => {
+  // Patients type what they hear. Every one of these is a real misspelling shape:
+  // dropped letter, doubled letter, transposition, phonetic guess.
+  const cases: Array<[string, string]> = [
+    ['cardologist', 'Cardiology'],
+    ['cardiologyst', 'Cardiology'],
+    ['nuerologist', 'Neurology'],
+    ['neurologest', 'Neurology'],
+    ['opthalmologist', 'Ophthalmology'],
+    ['ophthamologist', 'Ophthalmology'],
+    ['dermetologist', 'Dermatology'],
+    ['dermatalogist', 'Dermatology'],
+    ['gastraentologist', 'Gastroenterology'],
+    ['gastroentrologist', 'Gastroenterology'],
+    ['pediatrician', 'Pediatrics'],
+    ['pedeatrician', 'Pediatrics'],
+    ['psychiatrist', 'Psychiatry'],
+    ['psychatrist', 'Psychiatry'],
+    ['gynacologist', 'Gynecology'],
+    ['orthapedic', 'Orthopedics'],
+    ['ortopedic surgeon', 'Orthopedics'],
+    ['urologyst', 'Urology'],
+    ['stomac pain', 'Gastroenterology'],
+    ['kidny problem', 'Urology'],
+    ['teath pain', 'Dentistry'],
+  ];
+
+  it.each(cases)('reads %s as %s', (query, expected) => {
+    expect(parseWithRules(query).specialization).toBe(expected);
+  });
+
+  it('records what it corrected so the patient can see it', () => {
+    const c = parseWithRules('cardologist tomorrow');
+    expect(c.specialization).toBe('Cardiology');
+    expect(c.corrections?.[0]).toEqual({ from: 'cardologist', to: 'Cardiology' });
+  });
+
+  it('reads misspelled weekdays', () => {
+    expect(parseWithRules('doctor on firday').daysOfWeek).toEqual([5]);
+    expect(parseWithRules('doctor on saterday').daysOfWeek).toEqual([6]);
+    expect(parseWithRules('doctor on wendsday').daysOfWeek).toEqual([3]);
+  });
+
+  // The dangerous direction: a wrong guess sends a patient to the wrong speciality,
+  // which is worse than admitting we did not understand.
+  it('refuses to guess from ordinary words', () => {
+    expect(parseWithRules('i dont know what i need').specialization).toBeUndefined();
+    expect(parseWithRules('please find me someone soon').specialization).toBeUndefined();
+    expect(parseWithRules('appointment this week').specialization).toBeUndefined();
+    expect(parseWithRules('any doctor available').specialization).toBeUndefined();
+  });
+
+  it('does not let a stomach complaint reach an ENT clinic', () => {
+    // "gastraentologist" contains the letters "ent".
+    expect(parseWithRules('gastraentologist').specialization).toBe('Gastroenterology');
+  });
+});
+
+describe('editDistance', () => {
+  it('counts a transposition as one edit, not two', () => {
+    expect(editDistance('nuero', 'neuro')).toBe(1);
+    expect(editDistance('firday', 'friday')).toBe(1);
+  });
+
+  it('counts insertions, deletions and substitutions', () => {
+    expect(editDistance('card', 'cardi')).toBe(1);
+    expect(editDistance('opthalm', 'ophthalm')).toBe(1);
+    expect(editDistance('abc', 'abc')).toBe(0);
+  });
+});
+
+describe('slotMatches', () => {
+  // 2026-09-11 is a Friday, 2026-09-13 a Sunday.
+  it('rejects a slot on a day that was not asked for', () => {
+    const c = { ...parseWithRules('friday saturday'), from: '2026-09-11', to: '2026-09-13' };
+    expect(slotMatches('2026-09-11', '17:00', c)).toBe(true);
+    expect(slotMatches('2026-09-13', '17:00', c)).toBe(false);
+  });
+
+  it('rejects a slot outside the time window', () => {
+    const c = parseWithRules('after 5pm');
+    expect(slotMatches('2026-09-11', '09:00', c)).toBe(false);
+    expect(slotMatches('2026-09-11', '17:00', c)).toBe(true);
+    expect(slotMatches('2026-09-11', '18:30', c)).toBe(true);
+  });
+
+  it('treats beforeTime as exclusive', () => {
+    const c = parseWithRules('before 11am');
+    expect(slotMatches('2026-09-11', '10:30', c)).toBe(true);
+    expect(slotMatches('2026-09-11', '11:00', c)).toBe(false);
+  });
+
+  it('accepts everything when no day or time was named', () => {
+    const c = parseWithRules('any cardiologist');
+    expect(slotMatches('2026-09-13', '09:00', c)).toBe(true);
   });
 });

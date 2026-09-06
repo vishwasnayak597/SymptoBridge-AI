@@ -50,7 +50,27 @@ export interface BookingConstraints {
   maxKm?: number;
   /** Urgent triage ranks by soonest slot; otherwise cheap + well-rated wins. */
   preferSoonest?: boolean;
+  /** 0=Sunday..6=Saturday. Set when the request names specific days. */
+  daysOfWeek?: number[];
+  /**
+   * Spelling corrections the parser applied, so the patient is told how their words
+   * were read rather than silently getting a different speciality.
+   */
+  corrections?: Array<{ from: string; to: string }>;
+  /**
+   * Slot-of-day window as 'HH:MM', inclusive of `afterTime`, exclusive of `beforeTime`.
+   * Compared against the slot label the UI shows, so "after 5pm" filters the same
+   * clock the patient reads on the card.
+   */
+  afterTime?: string;
+  beforeTime?: string;
 }
+
+/** Constraint keys a patient can drop from the UI when the parse was wrong. */
+export type DroppableConstraint = keyof Pick<
+  BookingConstraints,
+  'specialization' | 'maxFee' | 'minRating' | 'maxKm' | 'daysOfWeek' | 'afterTime' | 'beforeTime'
+>;
 
 export interface AgentStep {
   label: string;
@@ -75,6 +95,15 @@ export interface BookingProposal {
 export interface AgentRunResult {
   constraints: BookingConstraints;
   steps: AgentStep[];
+  /**
+   * The whole trace in one line, for the fast path.
+   *
+   * The step-by-step list exists to cover a wait: with Gemini planning it is several
+   * tool rounds and 5-15 seconds, where silence reads as a hang. The rules path
+   * answers in well under a second, so four lines of narration there is theatre —
+   * the UI shows this single line instead and keeps `steps` for the slow path.
+   */
+  summary: string;
   proposals: BookingProposal[];
   /** Set when nothing matched — the UI relaxes these chips rather than dead-ending. */
   noMatchReason?: string;
@@ -88,6 +117,8 @@ interface RunOptions {
   lng?: number;
   /** Raised by the caller when the patient's triage said high/urgent. */
   urgent?: boolean;
+  /** Constraints the patient dismissed in the UI — dropped after parsing. */
+  drop?: DroppableConstraint[];
 }
 
 // ---------------------------------------------------------------- date helpers
@@ -102,11 +133,13 @@ function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** End of the current week (Sunday), or 7 days out if that is sooner than 2 days away. */
+/**
+ * End of "this week" — the coming Sunday. Asked ON a Sunday, the calendar week ends
+ * today, which would leave a one-day search; treat that as the week ahead instead.
+ */
 function endOfWeek(): string {
-  const now = new Date();
-  const daysToSunday = (7 - now.getUTCDay()) % 7;
-  return addDays(todayISO(), Math.max(daysToSunday, 2));
+  const daysToSunday = (7 - new Date().getUTCDay()) % 7;
+  return addDays(todayISO(), daysToSunday === 0 ? 6 : daysToSunday);
 }
 
 // ---------------------------------------------------------------- read tools
@@ -180,23 +213,222 @@ const TOOL_DECLARATIONS = [
 
 // ---------------------------------------------------------------- planning
 
+/**
+ * Matched on word-initial STEMS, not whole words, because patients misspell
+ * specialities constantly — "gastraentologist" must still reach Gastroenterology, and
+ * an exact "gastro" test misses it.
+ *
+ * Two rules keep the stems safe:
+ *  - every alternative is anchored with \b, so a stem only matches at the start of a
+ *    word. Without that, `ent` matches inside "gastra-ENT-ologist" and a stomach
+ *    complaint is routed to an ENT clinic.
+ *  - short, ambiguous words (ent, ear, eye, gp) must match as WHOLE words.
+ * Order matters: the first hit wins, so specific stems precede generic ones.
+ */
 const SPECIALIZATION_HINTS: Array<[RegExp, string]> = [
-  [/cardio|heart/i, 'Cardiology'],
-  [/derma|skin|rash|acne/i, 'Dermatology'],
-  [/p(a)?ediatric|child|kid|baby/i, 'Pediatrics'],
-  [/ortho|bone|joint|knee|fracture/i, 'Orthopedics'],
-  [/psych|mental|anxiety|depress/i, 'Psychiatry'],
-  [/neuro|migraine|headache|seizure/i, 'Neurology'],
-  [/gyn(a)?ec|pregnan/i, 'Gynecology'],
-  [/uro|kidney|urin/i, 'Urology'],
-  [/dent|tooth|teeth/i, 'Dentistry'],
-  [/ophthal|eye|vision/i, 'Ophthalmology'],
-  [/ent\b|ear|nose|throat/i, 'ENT (Ear, Nose & Throat)'],
-  [/gastro|stomach|digest/i, 'Gastroenterology'],
-  [/onco|cancer|tumou?r/i, 'Oncology'],
-  [/surg/i, 'Surgery'],
-  [/general|physician|gp\b/i, 'General Medicine'],
+  [/\bcardi|\bheart\b/i, 'Cardiology'],
+  [/\bgastr|\bstomach\b|\bdigest|\bliver\b|\bacidity\b/i, 'Gastroenterology'],
+  [/\bderm|\bskin\b|\brash\b|\bacne\b/i, 'Dermatology'],
+  [/\bp(a)?ediatr|\bchild|\bkid\b|\bbaby\b|\binfant/i, 'Pediatrics'],
+  [/\borthop|\bbone\b|\bjoint\b|\bknee\b|\bfractur/i, 'Orthopedics'],
+  [/\bpsychi|\bmental\b|\banxiet|\bdepress/i, 'Psychiatry'],
+  [/\bneuro|\bmigrain|\bheadach|\bseizur/i, 'Neurology'],
+  [/\bgyn|\bpregnan|\bobstetr/i, 'Gynecology'],
+  [/\burol|\bkidney\b|\burin|\bbladder\b/i, 'Urology'],
+  [/\bdent|\btooth\b|\bteeth\b/i, 'Dentistry'],
+  [/\bophthal|\boptom|\beye\b|\bvision\b/i, 'Ophthalmology'],
+  [/\bent\b|\bear\b|\bnose\b|\bthroat\b|\botolaryng/i, 'ENT (Ear, Nose & Throat)'],
+  [/\bonco|\bcancer\b|\btumou?r\b/i, 'Oncology'],
+  [/\bsurg/i, 'Surgery'],
+  [/\bphysician\b|\bgeneral\s+medicine\b|\bgp\b/i, 'General Medicine'],
 ];
+
+const WEEKDAY_HINTS: Array<[RegExp, number]> = [
+  [/\bsun(day)?\b/i, 0],
+  [/\bmon(day)?\b/i, 1],
+  [/\btue(s|sday)?\b/i, 2],
+  [/\bwed(nesday)?\b/i, 3],
+  [/\bthu(r|rs|rsday)?\b/i, 4],
+  [/\bfri(day)?\b/i, 5],
+  [/\bsat(urday)?\b/i, 6],
+];
+
+/**
+ * FUZZY MATCHING — the stem pass above only survives typos that keep the word's
+ * opening intact. Real patients write "cardologist", "nuerologist", "opthalmologist",
+ * "stomac". Those need edit distance.
+ *
+ * Damerau-Levenshtein (optimal string alignment) rather than plain Levenshtein,
+ * because the most common medical misspelling is a TRANSPOSITION — "nuero" for
+ * "neuro", "firday" for "friday" — which plain Levenshtein scores as 2 edits and
+ * would reject at a distance-1 threshold.
+ */
+export function editDistance(a: string, b: string): number {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const d: number[][] = Array.from({ length: rows }, (_, i) =>
+    Array.from({ length: cols }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
+
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      // transposition of two adjacent characters
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + cost);
+      }
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * How wrong a word may be before we stop trusting the match. Scaled by length: one
+ * edit in a 4-letter word is a different word, three edits in a 14-letter word is a
+ * typo.
+ */
+function allowedDistance(length: number): number {
+  if (length < 4) return 0;
+  if (length <= 6) return 1;
+  if (length <= 10) return 2;
+  return 3;
+}
+
+/**
+ * Words that must never be fuzzy-matched. Without this, "dont" is one edit from
+ * "dent" and "I dont know" books a dentist.
+ */
+const FUZZY_STOPWORDS = new Set([
+  'dont', 'doesnt', 'cant', 'wont', 'want', 'need', 'this', 'that', 'them', 'then',
+  'week', 'weeks', 'time', 'date', 'slot', 'slots', 'find', 'book', 'give', 'show',
+  'with', 'from', 'have', 'here', 'near', 'best', 'good', 'some', 'someone', 'please',
+  'appointment', 'appointments', 'doctor', 'doctors', 'specialist', 'consultation',
+  'after', 'before', 'under', 'below', 'over', 'about', 'today', 'tomorrow', 'morning',
+  'afternoon', 'evening', 'night', 'available', 'availability', 'earliest', 'soonest',
+]);
+
+/**
+ * Speciality vocabulary for the fuzzy pass. Each entry carries BOTH short roots and
+ * the full spelled-out words, because the two catch different typos:
+ *
+ *  - roots catch suffix mangling — "cardologist" -> root "card" vs "cardi" (1 edit),
+ *    where comparing against "cardiologist" whole would be 2+.
+ *  - full words catch dropped letters mid-word — "ortopedic" vs "orthopedic" is 1
+ *    edit, while its root "ortoped" against "orthop" is 3 and would be rejected.
+ */
+const SPECIALITY_TERMS: Array<[string[], string]> = [
+  [['cardi', 'cardiology', 'cardiologist', 'heart'], 'Cardiology'],
+  [
+    ['gastr', 'gastroenter', 'gastroenterology', 'gastroenterologist', 'stomach', 'digest', 'liver', 'acidity'],
+    'Gastroenterology',
+  ],
+  [['derm', 'dermatology', 'dermatologist', 'skin', 'rash', 'acne', 'eczema'], 'Dermatology'],
+  [['pediatr', 'paediatr', 'pediatrics', 'pediatrician', 'paediatrician', 'child', 'infant'], 'Pediatrics'],
+  [
+    ['orthop', 'orthopedic', 'orthopaedic', 'orthopedics', 'orthopedist', 'bone', 'joint', 'knee', 'fractur', 'spine'],
+    'Orthopedics',
+  ],
+  [['psych', 'psychi', 'psychiatry', 'psychiatrist', 'mental', 'anxiet', 'depress'], 'Psychiatry'],
+  [['neur', 'neurology', 'neurologist', 'migrain', 'headach', 'seizur', 'epilep'], 'Neurology'],
+  [['gynec', 'gynaec', 'gynecology', 'gynecologist', 'obstetr', 'pregnan'], 'Gynecology'],
+  [['urol', 'urology', 'urologist', 'kidney', 'urin', 'bladder', 'prostat'], 'Urology'],
+  [['dent', 'dentist', 'dentistry', 'tooth', 'teeth', 'cavit'], 'Dentistry'],
+  [['ophthalm', 'opthalm', 'ophthalmology', 'ophthalmologist', 'optom', 'vision'], 'Ophthalmology'],
+  [['otolaryng', 'throat', 'sinus', 'tonsil'], 'ENT (Ear, Nose & Throat)'],
+  [['oncol', 'oncology', 'oncologist', 'cancer', 'tumor', 'tumour'], 'Oncology'],
+  [['surg', 'surgery', 'surgeon'], 'Surgery'],
+  [['physician', 'medicine'], 'General Medicine'],
+];
+
+/**
+ * Specialities that describe a ROLE rather than a body system. "Orthopedic surgeon"
+ * matches both Surgery and Orthopedics — and Surgery matches at distance 0 while the
+ * misspelled "ortopedic" matches at 1. Distance alone would therefore send an
+ * orthopedic request to general Surgery, so a specific speciality always outranks a
+ * generic one that also matched.
+ */
+const GENERIC_SPECIALITIES = new Set(['Surgery', 'General Medicine']);
+
+/** "cardologist" -> "card"; "neurology" -> "neur"; "dermatologist" -> "dermat". */
+function medicalRoot(word: string): string {
+  return word.replace(/(ologists?|ology|ologies|iatrists?|iatry|icians?|ists?|ic|al)$/, '');
+}
+
+export interface SpecialityMatch {
+  specialization: string;
+  /** The word the patient actually typed, so the UI can show what was corrected. */
+  from: string;
+  /** 0 when the word matched a known term exactly — nothing was corrected. */
+  distance: number;
+}
+
+/**
+ * Best fuzzy speciality match in a query, or null when nothing is close enough.
+ * Runs only after the exact/stem pass fails, so a correctly spelled request never
+ * pays for it.
+ */
+export function fuzzySpecialization(query: string): SpecialityMatch | null {
+  const words = query.toLowerCase().match(/[a-z]+/g) || [];
+  let best: { spec: string; word: string; distance: number } | null = null;
+
+  const better = (spec: string, distance: number) => {
+    if (!best) return true;
+    // A specific speciality beats a generic one regardless of distance; between two of
+    // the same kind, the closer spelling wins.
+    const bestIsGeneric = GENERIC_SPECIALITIES.has(best.spec);
+    const thisIsGeneric = GENERIC_SPECIALITIES.has(spec);
+    if (bestIsGeneric !== thisIsGeneric) return bestIsGeneric;
+    return distance < best.distance;
+  };
+
+  for (const word of words) {
+    if (word.length < 4 || FUZZY_STOPWORDS.has(word)) continue;
+    const root = medicalRoot(word);
+
+    for (const [terms, spec] of SPECIALITY_TERMS) {
+      for (const term of terms) {
+        // Compare the word both whole and stripped of its medical suffix; the
+        // threshold follows the term being matched against.
+        const distance = Math.min(
+          editDistance(word, term),
+          root.length >= 3 ? editDistance(root, term) : Infinity
+        );
+        if (distance <= allowedDistance(term.length) && better(spec, distance)) {
+          best = { spec, word, distance };
+        }
+      }
+    }
+  }
+
+  return best ? { specialization: best.spec, from: best.word, distance: best.distance } : null;
+}
+
+const FULL_WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/** Misspelled day names: "firday" -> Friday, "saterday" -> Saturday. */
+export function fuzzyWeekdays(query: string): number[] {
+  const words = query.toLowerCase().match(/[a-z]+/g) || [];
+  const found = new Set<number>();
+  for (const word of words) {
+    if (word.length < 5 || FUZZY_STOPWORDS.has(word)) continue;
+    FULL_WEEKDAYS.forEach((day, index) => {
+      if (editDistance(word, day) <= allowedDistance(day.length)) found.add(index);
+    });
+  }
+  return Array.from(found).sort();
+}
+
+/** "5pm" / "5 pm" / "17" -> "17:00". Returns null for nonsense hours. */
+function toClock(hour: string, meridiem?: string): string | null {
+  let h = Number(hour);
+  if (Number.isNaN(h) || h > 24) return null;
+  const m = meridiem?.toLowerCase();
+  if (m === 'pm' && h < 12) h += 12;
+  if (m === 'am' && h === 12) h = 0;
+  if (h > 23) return null;
+  return `${String(h).padStart(2, '0')}:00`;
+}
 
 /**
  * Constraint extraction without an LLM. Covers the phrasings the UI's own filters
@@ -206,12 +438,29 @@ export function parseWithRules(query: string): BookingConstraints {
   const q = query.toLowerCase();
   const constraints: BookingConstraints = { from: todayISO(), to: addDays(todayISO(), 7) };
 
+  let exactSpec: string | undefined;
   for (const [pattern, spec] of SPECIALIZATION_HINTS) {
     if (pattern.test(q)) {
-      constraints.specialization = spec;
+      exactSpec = spec;
       break;
     }
   }
+
+  // The fuzzy pass also runs when the exact pass only found a GENERIC speciality:
+  // "ortopedic surgeon" matches /\bsurg/ perfectly, and stopping there would book a
+  // general surgeon for a bone problem.
+  if (!exactSpec || GENERIC_SPECIALITIES.has(exactSpec)) {
+    const guess = fuzzySpecialization(q);
+    if (guess && (!exactSpec || !GENERIC_SPECIALITIES.has(guess.specialization))) {
+      constraints.specialization = guess.specialization;
+      // A non-zero distance means we read the word as something the patient did not
+      // type, which they are entitled to see.
+      if (guess.distance > 0) {
+        constraints.corrections = [{ from: guess.from, to: guess.specialization }];
+      }
+    }
+  }
+  if (!constraints.specialization) constraints.specialization = exactSpec;
 
   // "under 800", "below ₹800", "less than rs 800", "800 rupees or less"
   const fee = q.match(/(?:under|below|less than|max(?:imum)?|upto|up to|within)\s*(?:₹|rs\.?|inr)?\s*(\d{2,6})/);
@@ -235,9 +484,118 @@ export function parseWithRules(query: string): BookingConstraints {
     constraints.to = addDays(endOfWeek(), 7);
   }
 
+  // Named days: "friday saturday" -> [5, 6]. Misspellings ("firday", "saterday")
+  // fall through to the same fuzzy pass the speciality uses.
+  const days = WEEKDAY_HINTS.filter(([pattern]) => pattern.test(q)).map(([, day]) => day);
+  if (days.length === 0) {
+    const fuzzyDays = fuzzyWeekdays(q);
+    if (fuzzyDays.length > 0) days.push(...fuzzyDays);
+  }
+  if (days.length > 0) {
+    constraints.daysOfWeek = days;
+    // A named weekday has to exist inside the window, or the search returns nothing.
+    // "this week ... friday" asked on a Sunday would otherwise scan Sun-Tue and find
+    // no Friday at all.
+    if (!windowContainsAnyDay(constraints.from, constraints.to, days)) {
+      constraints.to = addDays(constraints.from, 13);
+    }
+  }
+
+  // Time of day: "after 5pm", "before 11 am", or a named part of the day.
+  const after = q.match(/\bafter\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/);
+  if (after) {
+    const clock = toClock(after[1], after[3]);
+    if (clock) constraints.afterTime = clock;
+  }
+  const before = q.match(/\bbefore\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/);
+  if (before) {
+    const clock = toClock(before[1], before[3]);
+    if (clock) constraints.beforeTime = clock;
+  }
+  if (!after && !before) {
+    if (/\bmorning\b/.test(q)) constraints.beforeTime = '12:00';
+    else if (/\bafternoon\b/.test(q)) {
+      constraints.afterTime = '12:00';
+      constraints.beforeTime = '17:00';
+    } else if (/\bevening\b|\bnight\b/.test(q)) constraints.afterTime = '17:00';
+  }
+
   if (/asap|urgent|soonest|earliest|emergency/.test(q)) constraints.preferSoonest = true;
 
   return constraints;
+}
+
+/** True when at least one date in [from, to] falls on one of `days`. */
+function windowContainsAnyDay(from: string, to: string, days: number[]): boolean {
+  const cursor = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (cursor <= end) {
+    if (days.includes(cursor.getUTCDay())) return true;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return false;
+}
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** '17:00' -> '5pm', for step text the patient can read. */
+export function clockLabel(clock: string): string {
+  const [h, m] = clock.split(':').map(Number);
+  const suffix = h >= 12 ? 'pm' : 'am';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return m ? `${hour12}:${String(m).padStart(2, '0')}${suffix}` : `${hour12}${suffix}`;
+}
+
+/** Human summary of the date/day/time window, used in the trace. */
+export function describeWindow(c: BookingConstraints): string {
+  const parts: string[] = [];
+  if (c.daysOfWeek?.length) {
+    parts.push(`on ${c.daysOfWeek.map((d) => DAY_NAMES[d]).join('/')}`);
+  }
+  if (c.afterTime && c.beforeTime) parts.push(`between ${clockLabel(c.afterTime)} and ${clockLabel(c.beforeTime)}`);
+  else if (c.afterTime) parts.push(`after ${clockLabel(c.afterTime)}`);
+  else if (c.beforeTime) parts.push(`before ${clockLabel(c.beforeTime)}`);
+  parts.push(`between ${c.from} and ${c.to}`);
+  return parts.join(', ');
+}
+
+/**
+ * The window, naming only what narrows it. When the patient asked for specific days or
+ * hours those are the interesting part and the date range is already on a chip; with no
+ * such filter, the range IS the window.
+ */
+export function compactWindow(c: BookingConstraints): string {
+  const parts: string[] = [];
+  if (c.daysOfWeek?.length) parts.push(`on ${c.daysOfWeek.map((d) => DAY_NAMES[d]).join('/')}`);
+  if (c.afterTime && c.beforeTime) parts.push(`between ${clockLabel(c.afterTime)} and ${clockLabel(c.beforeTime)}`);
+  else if (c.afterTime) parts.push(`after ${clockLabel(c.afterTime)}`);
+  else if (c.beforeTime) parts.push(`before ${clockLabel(c.beforeTime)}`);
+  if (parts.length === 0) parts.push(`between ${c.from} and ${c.to}`);
+  return parts.join(', ');
+}
+
+/** Everything the parser understood, as one line. */
+export function describeConstraints(c: BookingConstraints): string {
+  return [
+    c.specialization || 'any speciality',
+    c.maxFee ? `under ₹${c.maxFee}` : null,
+    c.minRating ? `${c.minRating}★ and up` : null,
+    describeWindow(c),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/** Does one (date, slot) pair satisfy the day/time constraints? */
+export function slotMatches(date: string, time: string, c: BookingConstraints): boolean {
+  if (c.daysOfWeek?.length) {
+    const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+    if (!c.daysOfWeek.includes(day)) return false;
+  }
+  // 'HH:MM' strings are zero-padded, so lexical comparison is chronological.
+  if (c.afterTime && time < c.afterTime) return false;
+  if (c.beforeTime && time >= c.beforeTime) return false;
+  return true;
 }
 
 function geminiClient(): GoogleGenerativeAI | null {
@@ -346,9 +704,11 @@ function rankProposals(
     const dates = Object.keys(byDate).sort();
     let earliest: { date: string; time: string } | null = null;
     for (const date of dates) {
-      const slots = byDate[date];
-      if (slots && slots.length > 0) {
-        earliest = { date, time: slots[0] };
+      // Honour the day-of-week and time-of-day constraints. Taking slots[0] blindly
+      // is what offered a Sunday 9am for a "friday saturday after 5pm" request.
+      const slot = (byDate[date] || []).find((time) => slotMatches(date, time, constraints));
+      if (slot) {
+        earliest = { date, time: slot };
         break;
       }
     }
@@ -433,7 +793,7 @@ async function takeProposal(id: string): Promise<StoredProposal | null> {
 // ---------------------------------------------------------------- public API
 
 export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult> {
-  const { patientId, query, lat, lng, urgent } = opts;
+  const { patientId, query, lat, lng, urgent, drop } = opts;
   const steps: AgentStep[] = [];
   const emit = (step: AgentStep) => {
     steps.push(step);
@@ -443,6 +803,10 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
 
   let constraints = parseWithRules(query);
   if (urgent) constraints.preferSoonest = true;
+  // The UI's "×" on a chip lands here: the patient telling us that constraint was a
+  // misread. Re-running the same sentence would just re-derive it, so the drop has to
+  // be applied after parsing.
+  for (const key of drop || []) delete (constraints as any)[key];
   let doctors: DoctorSummary[] | null = null;
   let plannedBy: 'gemini' | 'rules' = 'rules';
 
@@ -461,14 +825,10 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
 
   if (doctors === null) {
     emit({
-      label: `Reading your request`,
-      detail: [
-        constraints.specialization || 'any speciality',
-        constraints.maxFee ? `under ₹${constraints.maxFee}` : null,
-        `${constraints.from} to ${constraints.to}`,
-      ]
-        .filter(Boolean)
-        .join(' · '),
+      label: constraints.corrections?.length
+        ? `Read "${constraints.corrections[0].from}" as ${constraints.corrections[0].to}`
+        : `Reading your request`,
+      detail: describeConstraints(constraints),
     });
     doctors = await searchDoctorsTool(
       {
@@ -485,10 +845,13 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
     });
   }
 
+  const specLabel = constraints.specialization ? `${constraints.specialization} ` : '';
+
   if (doctors.length === 0) {
     return {
       constraints,
       steps,
+      summary: `No ${specLabel}doctors match those filters`,
       proposals: [],
       plannedBy,
       noMatchReason: 'No doctor matches those filters yet. Try widening the fee or speciality.',
@@ -502,23 +865,40 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
     to: constraints.to,
   });
 
+  // Count only slots that survive the day/time filters — reporting every open slot
+  // while proposing from a filtered subset makes the trace lie about its own work.
   const openCount = Object.values(availability).reduce(
-    (sum, byDate) => sum + Object.values(byDate).reduce((n, slots) => n + slots.length, 0),
+    (sum, byDate) =>
+      sum +
+      Object.entries(byDate).reduce(
+        (n, [date, slots]) => n + slots.filter((time) => slotMatches(date, time, constraints)).length,
+        0
+      ),
     0
   );
   emit({
-    label: `Checked ${shortlist.length} calendars`,
-    detail: `${openCount} open slot${openCount === 1 ? '' : 's'} between ${constraints.from} and ${constraints.to}`,
+    label: `Checked ${shortlist.length} calendar${shortlist.length === 1 ? '' : 's'}`,
+    detail: `${openCount} slot${openCount === 1 ? '' : 's'} open ${describeWindow(constraints)}`,
   });
+
+  const summary =
+    `Checked ${shortlist.length} ${specLabel}calendar${shortlist.length === 1 ? '' : 's'} · ` +
+    `${openCount} slot${openCount === 1 ? '' : 's'} ${compactWindow(constraints)}`;
 
   const ranked = rankProposals(shortlist, availability, constraints);
   if (ranked.length === 0) {
     return {
       constraints,
       steps,
+      summary,
       proposals: [],
       plannedBy,
-      noMatchReason: 'Those doctors have nothing free in that window. Try a wider date range or join a waitlist.',
+      // Name the narrowing constraint — "nothing free" is not actionable when the
+      // reason is a day or time filter the patient can simply drop.
+      noMatchReason:
+        constraints.daysOfWeek?.length || constraints.afterTime || constraints.beforeTime
+          ? `Nothing open ${describeWindow(constraints)}. Remove the day or time filter above, or widen the dates.`
+          : 'Those doctors have nothing free in that window. Try a wider date range or join a waitlist.',
     };
   }
 
@@ -545,7 +925,7 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
     payload: { query, plannedBy, proposals: proposals.length, constraints: constraints as any },
   });
 
-  return { constraints, steps, proposals, plannedBy };
+  return { constraints, steps, summary, proposals, plannedBy };
 }
 
 /**
