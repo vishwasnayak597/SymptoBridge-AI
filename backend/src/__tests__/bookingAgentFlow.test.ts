@@ -247,6 +247,18 @@ describe('confirmProposal (the write gate)', () => {
     expect(stored).not.toBeNull();
   });
 
+  it('leaves the new appointment unpaid, for the payment step to settle', async () => {
+    const { patientId } = await seedDirectory();
+    const result = await runBookingAgent({ patientId, query: 'cardiologist under ₹800' });
+
+    const appointment: any = await confirmProposal(result.proposals[0].proposalId, patientId);
+
+    // Confirming holds the slot; it does not take money. The UI hands straight to
+    // PaymentProcessor, and this must never default to 'paid'.
+    expect(appointment.paymentStatus).toBe('pending');
+    expect(appointment.fee).toBe(result.proposals[0].fee);
+  });
+
   it('consumes the proposal so the same one cannot book twice', async () => {
     const { patientId } = await seedDirectory();
     const result = await runBookingAgent({ patientId, query: 'cardiologist under ₹800' });

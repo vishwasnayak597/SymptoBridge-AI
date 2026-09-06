@@ -5,9 +5,11 @@ import {
   CheckCircleIcon,
   XMarkIcon,
   CalendarDaysIcon,
+  ClockIcon,
 } from '@heroicons/react/24/outline';
 import { apiClient } from '../../lib/api';
 import { getSocket } from '../../lib/socket';
+import PaymentProcessor from '../../components/PaymentProcessor';
 
 interface AgentStep {
   label: string;
@@ -124,6 +126,15 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
   const [error, setError] = useState('');
   const [confirming, setConfirming] = useState<string | null>(null);
   const [booked, setBooked] = useState<Proposal | null>(null);
+  /**
+   * The appointment exists but is unpaid. Booking creates it with
+   * `paymentStatus: 'pending'` — same as the normal flow — and payment is the step
+   * that settles it, so the panel is not finished until this clears.
+   */
+  const [awaitingPayment, setAwaitingPayment] = useState<{
+    appointmentId: string;
+    proposal: Proposal;
+  } | null>(null);
   const [dropped, setDropped] = useState<Set<DroppableKey>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -166,14 +177,20 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
     setConfirming(proposal.proposalId);
     setError('');
     try {
-      await apiClient.post(
+      const response = await apiClient.post(
         '/ai/booking-agent/confirm',
         { proposalId: proposal.proposalId, symptoms: query },
         // One key per logical booking: a network retry replays the original 201
         // instead of hitting the consumed-proposal error.
         { headers: { 'Idempotency-Key': proposal.proposalId } }
       );
-      setBooked(proposal);
+      const appointment = response.data.data;
+      // The slot is held, not paid for. Hand straight to the same payment step the
+      // Find Doctors flow uses rather than reporting a booking that owes money.
+      setAwaitingPayment({
+        appointmentId: appointment._id || appointment.id,
+        proposal,
+      });
       setResult(null);
       onBooked?.();
     } catch (err: any) {
@@ -183,6 +200,27 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
       if (err?.response?.status === 409) run(query);
     } finally {
       setConfirming(null);
+    }
+  };
+
+  const handlePaymentSuccess = async (paymentId: string) => {
+    if (!awaitingPayment) return;
+    try {
+      await apiClient.put(`/appointments/${awaitingPayment.appointmentId}`, {
+        paymentId,
+        paymentStatus: 'paid',
+      });
+      setBooked(awaitingPayment.proposal);
+      setAwaitingPayment(null);
+      onBooked?.();
+    } catch (err: any) {
+      // The money moved but the appointment still reads unpaid — say so plainly
+      // instead of a generic failure, and keep the payment id visible.
+      setError(
+        `Payment ${paymentId} went through, but we could not mark the appointment paid. ` +
+          'It is in your Appointments tab — please contact support with that reference.'
+      );
+      setAwaitingPayment(null);
     }
   };
 
@@ -350,12 +388,14 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
                     disabled={confirming !== null}
                     className="btn-primary shrink-0 disabled:opacity-50"
                   >
-                    {confirming === proposal.proposalId ? 'Booking…' : `Confirm · ₹${proposal.fee}`}
+                    {confirming === proposal.proposalId
+                      ? 'Holding…'
+                      : `Book & pay · ₹${proposal.fee}`}
                   </button>
                 </div>
               ))}
               <p className="text-xs text-stone-500">
-                Nothing is booked until you confirm.
+                Nothing is booked until you confirm, and you pay on the next step.
               </p>
             </div>
           ) : (
@@ -366,12 +406,38 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
         </>
       )}
 
+      {awaitingPayment && (
+        <div className="mt-4 border-t border-stone-200 pt-4">
+          <div className="flex items-start gap-3 mb-4">
+            <ClockIcon className="h-5 w-5 text-ember-600 mt-0.5 shrink-0" />
+            <p className="text-sm text-stone-700">
+              <strong>{awaitingPayment.proposal.doctorName}</strong> is held for{' '}
+              {formatSlot(awaitingPayment.proposal)}. Pay to confirm the consultation.
+            </p>
+          </div>
+          <PaymentProcessor
+            appointmentId={awaitingPayment.appointmentId}
+            doctorId={awaitingPayment.proposal.doctorId}
+            amount={awaitingPayment.proposal.fee}
+            consultationType="video"
+            onPaymentSuccess={handlePaymentSuccess}
+            onPaymentFailure={(message) => setError(`Payment failed: ${message}`)}
+            onCancel={() => {
+              setAwaitingPayment(null);
+              setError(
+                'The appointment is held but unpaid. You can pay for it from the Appointments tab.'
+              );
+            }}
+          />
+        </div>
+      )}
+
       {booked && (
         <div className="mt-4 flex items-start gap-3 rounded-xl bg-moss-50 border border-moss-200 p-4">
           <CheckCircleIcon className="h-5 w-5 text-moss-600 mt-0.5 shrink-0" />
           <p className="text-sm text-moss-800">
-            Booked <strong>{booked.doctorName}</strong> for {formatSlot(booked)}. It&rsquo;s in your
-            Appointments tab.
+            Paid and booked — <strong>{booked.doctorName}</strong> for {formatSlot(booked)}.
+            It&rsquo;s in your Appointments tab.
           </p>
         </div>
       )}
