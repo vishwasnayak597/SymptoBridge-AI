@@ -383,7 +383,10 @@ export function fuzzySpecialization(query: string): SpecialityMatch | null {
   };
 
   for (const word of words) {
-    if (word.length < 4 || FUZZY_STOPWORDS.has(word)) continue;
+    // Four-letter words are skipped: at one edit they collide with everyday English
+    // ("card" -> cardi, "went" -> dent, "done" -> bone, "sure" -> surg). Correctly
+    // spelled short terms (skin, rash, knee, bone) are already caught by the exact pass.
+    if (word.length < 5 || FUZZY_STOPWORDS.has(word)) continue;
     const root = medicalRoot(word);
 
     for (const [terms, spec] of SPECIALITY_TERMS) {
@@ -419,15 +422,16 @@ export function fuzzyWeekdays(query: string): number[] {
   return Array.from(found).sort();
 }
 
-/** "5pm" / "5 pm" / "17" -> "17:00". Returns null for nonsense hours. */
-function toClock(hour: string, meridiem?: string): string | null {
+/** "5pm" / "5 pm" / "17" / "4:30pm" -> "17:00" / "16:30". Returns null for nonsense times. */
+function toClock(hour: string, minutes?: string, meridiem?: string): string | null {
   let h = Number(hour);
-  if (Number.isNaN(h) || h > 24) return null;
+  const min = minutes ? Number(minutes) : 0;
+  if (Number.isNaN(h) || h > 24 || Number.isNaN(min) || min > 59) return null;
   const m = meridiem?.toLowerCase();
   if (m === 'pm' && h < 12) h += 12;
   if (m === 'am' && h === 12) h = 0;
   if (h > 23) return null;
-  return `${String(h).padStart(2, '0')}:00`;
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 }
 
 /**
@@ -463,7 +467,11 @@ export function parseWithRules(query: string): BookingConstraints {
   if (!constraints.specialization) constraints.specialization = exactSpec;
 
   // "under 800", "below ₹800", "less than rs 800", "800 rupees or less"
-  const fee = q.match(/(?:under|below|less than|max(?:imum)?|upto|up to|within)\s*(?:₹|rs\.?|inr)?\s*(\d{2,6})/);
+  // The lookahead keeps distances and durations ("within 10 km", "under 30 minutes")
+  // from being read as a fee; `\d` in it stops backtracking to a shorter number.
+  const fee = q.match(
+    /(?:under|below|less than|max(?:imum)?|upto|up to|within)\s*(?:₹|rs\.?|inr)?\s*(\d{2,6})(?!\d|\s*(?:km|kms|kilomet|miles?\b|mins?\b|minutes?|hours?|hrs?\b|days?\b|weeks?\b|stars?\b))/
+  );
   if (fee) constraints.maxFee = Number(fee[1]);
 
   const rating = q.match(/(\d(?:\.\d)?)\s*\+?\s*(?:star|rating)/);
@@ -504,12 +512,12 @@ export function parseWithRules(query: string): BookingConstraints {
   // Time of day: "after 5pm", "before 11 am", or a named part of the day.
   const after = q.match(/\bafter\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/);
   if (after) {
-    const clock = toClock(after[1], after[3]);
+    const clock = toClock(after[1], after[2], after[3]);
     if (clock) constraints.afterTime = clock;
   }
   const before = q.match(/\bbefore\s*(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?/);
   if (before) {
-    const clock = toClock(before[1], before[3]);
+    const clock = toClock(before[1], before[2], before[3]);
     if (clock) constraints.beforeTime = clock;
   }
   if (!after && !before) {
@@ -610,7 +618,8 @@ function geminiClient(): GoogleGenerativeAI | null {
 async function planWithGemini(
   query: string,
   ctx: { lat?: number; lng?: number },
-  steps: AgentStep[]
+  emit: (step: AgentStep) => void,
+  drop: DroppableConstraint[] = []
 ): Promise<{ constraints: BookingConstraints; doctors: DoctorSummary[] } | null> {
   const genAI = geminiClient();
   if (!genAI) return null;
@@ -621,7 +630,11 @@ async function planWithGemini(
     generationConfig: { temperature: 0, maxOutputTokens: 512 },
   });
 
+  // Constraints the patient dismissed must stay dismissed on this path too: strip them
+  // from the seed AND from whatever the model passes to searchDoctors, or re-reading
+  // the same sentence brings them straight back.
   const seed = parseWithRules(query);
+  for (const key of drop) delete (seed as any)[key];
   const prompt = [
     'You are a booking assistant for a telemedicine platform in India. Fees are in INR.',
     `Today is ${todayISO()}. The current week ends ${endOfWeek()}.`,
@@ -634,6 +647,7 @@ async function planWithGemini(
   const chat = model.startChat();
   let constraints: BookingConstraints = seed;
   let doctors: DoctorSummary[] = [];
+  let searched = false;
   let message: any = prompt;
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -644,7 +658,9 @@ async function planWithGemini(
     const responses: any[] = [];
     for (const call of calls) {
       if (call.name === 'searchDoctors') {
-        const args = call.args || {};
+        const args = { ...(call.args || {}) };
+        for (const key of drop) delete args[key];
+        searched = true;
         constraints = {
           ...constraints,
           specialization: args.specialization ?? constraints.specialization,
@@ -653,7 +669,7 @@ async function planWithGemini(
           maxKm: args.maxKm ?? constraints.maxKm,
         };
         doctors = await searchDoctorsTool(args, ctx);
-        steps.push({
+        emit({
           label: `Searched ${constraints.specialization || 'all specialities'}`,
           detail: `${doctors.length} doctor${doctors.length === 1 ? '' : 's'} match the fee and rating limits`,
         });
@@ -683,7 +699,10 @@ async function planWithGemini(
     message = responses;
   }
 
-  return { constraints, doctors };
+  // No searchDoctors call means the model never planned a search (prose answer, or
+  // only getAvailability) — an empty `doctors` here is not a real "no match", so let
+  // the caller fall back to the rules pipeline.
+  return searched ? { constraints, doctors } : null;
 }
 
 // ---------------------------------------------------------------- ranking
@@ -812,8 +831,8 @@ export async function runBookingAgent(opts: RunOptions): Promise<AgentRunResult>
 
   if (GEMINI_API_KEY) {
     try {
-      const planned = await planWithGemini(query, { lat, lng }, steps);
-      if (planned && planned.doctors.length >= 0) {
+      const planned = await planWithGemini(query, { lat, lng }, emit, drop);
+      if (planned) {
         constraints = { ...planned.constraints, preferSoonest: constraints.preferSoonest };
         doctors = planned.doctors;
         plannedBy = 'gemini';

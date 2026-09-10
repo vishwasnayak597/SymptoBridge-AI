@@ -60,6 +60,13 @@ export interface RatingData {
   review?: string;
 }
 
+/**
+ * Longest appointment the booking schema accepts (shared/schemas.ts `duration`).
+ * Bounds the overlap query: nothing starting further back than this can still be
+ * running when a new appointment begins.
+ */
+const MAX_APPOINTMENT_MINUTES = 120;
+
 /** Thrown when a booking loses the race for a slot — maps to HTTP 409. */
 export class SlotTakenError extends Error {
   constructor() {
@@ -75,7 +82,7 @@ export class AppointmentService {
   static async createAppointment(data: CreateAppointmentRequest): Promise<IAppointment> {
     const { patientId, doctorId, appointmentDate, symptoms, specialization, fee, consultationType, duration = 30, forDependent, triageSummary } = data;
 
-    await this.validateAppointmentCreation(patientId, doctorId, appointmentDate);
+    await this.validateAppointmentCreation(patientId, doctorId, appointmentDate, duration);
 
     const appointment = new Appointment({
       patient: new mongoose.Types.ObjectId(patientId),
@@ -593,7 +600,12 @@ export class AppointmentService {
   /**
    * Validate appointment creation
    */
-  private static async validateAppointmentCreation(patientId: string, doctorId: string, appointmentDate: Date): Promise<void> {
+  private static async validateAppointmentCreation(
+    patientId: string,
+    doctorId: string,
+    appointmentDate: Date,
+    duration = 30
+  ): Promise<void> {
     const [patient, doctor] = await Promise.all([
       User.findById(patientId),
       User.findById(doctorId)
@@ -611,16 +623,34 @@ export class AppointmentService {
       throw new Error('Appointment date must be in the future');
     }
 
-    const existingAppointment = await Appointment.findOne({
+    // Real interval overlap, using EACH appointment's own duration — the same rule
+    // SlotService uses to decide what is free, so a slot the UI offers is a slot this
+    // accepts. Two appointments clash iff one starts before the other ends:
+    //   existing.start < new.end  &&  existing.end > new.start
+    // Back-to-back is fine (09:30 after a 30-min 09:00), and a 60-min 09:00 still
+    // blocks 09:30. A fixed ±30-minute window gets one of those two cases wrong,
+    // because durations run 15-120 minutes (shared/schemas.ts).
+    const newStart = appointmentDate.getTime();
+    const newEnd = newStart + duration * 60 * 1000;
+
+    // Only appointments starting within MAX_APPOINTMENT_MINUTES before our end can
+    // reach into our slot, so that bounds the query; the exact test runs below.
+    const candidates = await Appointment.find({
       doctor: new mongoose.Types.ObjectId(doctorId),
       appointmentDate: {
-        $gte: new Date(appointmentDate.getTime() - 30 * 60 * 1000),
-        $lte: new Date(appointmentDate.getTime() + 30 * 60 * 1000)
+        $gt: new Date(newStart - MAX_APPOINTMENT_MINUTES * 60 * 1000),
+        $lt: new Date(newEnd)
       },
       status: { $in: ['scheduled', 'confirmed'] }
+    }).select('appointmentDate duration');
+
+    const clash = candidates.some((existing) => {
+      const start = new Date(existing.appointmentDate).getTime();
+      const end = start + (existing.duration || 30) * 60 * 1000;
+      return start < newEnd && end > newStart;
     });
 
-    if (existingAppointment) {
+    if (clash) {
       throw new SlotTakenError();
     }
   }

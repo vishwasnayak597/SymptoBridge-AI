@@ -158,3 +158,59 @@ describe('VideoCallService.getActiveCallForPatient (ring window)', () => {
     expect(active).toBeNull();
   });
 });
+
+describe('AppointmentService.createAppointment (slot overlap)', () => {
+  // A fixed future day at a known UTC hour, so the arithmetic below is exact.
+  function at(time: string): Date {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + 3);
+    return new Date(`${d.toISOString().slice(0, 10)}T${time}:00.000Z`);
+  }
+
+  async function book(patientId: Types.ObjectId, doctorId: Types.ObjectId, time: string, duration = 30) {
+    return AppointmentService.createAppointment({
+      patientId: patientId.toString(),
+      doctorId: doctorId.toString(),
+      appointmentDate: at(time),
+      duration,
+      consultationType: 'video',
+      symptoms: 'Follow-up',
+      specialization: 'Cardiology',
+      fee: 500,
+    } as any);
+  }
+
+  afterAll(async () => {
+    const { stopJobWorkers } = await import('../services/JobQueueService');
+    await stopJobWorkers();
+  });
+
+  // Regression: availability showed 09:30 as free after a 09:00 booking, but the
+  // booking check used an inclusive ±30-minute window and rejected it.
+  it('accepts a back-to-back slot', async () => {
+    const { patientId, doctorId } = await createUsers();
+    await book(patientId, doctorId, '09:00');
+    await expect(book(patientId, doctorId, '09:30')).resolves.toBeDefined();
+  });
+
+  // Regression for the fix above: a fixed 30-minute window let 09:30 into an
+  // appointment that actually runs 09:00-10:00.
+  it('rejects a slot inside a longer existing appointment', async () => {
+    const { patientId, doctorId } = await createUsers();
+    await book(patientId, doctorId, '09:00', 60);
+    await expect(book(patientId, doctorId, '09:30')).rejects.toThrow(/not available/i);
+  });
+
+  it('rejects a long new appointment that runs into an existing one', async () => {
+    const { patientId, doctorId } = await createUsers();
+    await book(patientId, doctorId, '10:00');
+    await expect(book(patientId, doctorId, '09:00', 90)).rejects.toThrow(/not available/i);
+  });
+
+  it('rejects a partial overlap and allows the slot after a long appointment ends', async () => {
+    const { patientId, doctorId } = await createUsers();
+    await book(patientId, doctorId, '09:00', 60);
+    await expect(book(patientId, doctorId, '09:45')).rejects.toThrow(/not available/i);
+    await expect(book(patientId, doctorId, '10:00')).resolves.toBeDefined();
+  });
+});

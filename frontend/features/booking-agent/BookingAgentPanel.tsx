@@ -196,8 +196,11 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
     } catch (err: any) {
       // 409 means someone took the slot between proposal and click — re-run so the
       // patient gets fresh options instead of a dead error.
-      setError(err?.response?.data?.error || 'Could not confirm that booking.');
-      if (err?.response?.status === 409) run(query);
+      // The re-run keeps the chips the patient already removed, and because run() clears
+      // the error as it starts, the message is set after kicking it off so it survives.
+      const message = err?.response?.data?.error || 'Could not confirm that booking.';
+      if (err?.response?.status === 409) run(query, Array.from(dropped));
+      setError(message);
     } finally {
       setConfirming(null);
     }
