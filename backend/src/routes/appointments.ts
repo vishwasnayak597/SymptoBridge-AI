@@ -5,9 +5,11 @@ import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { idempotent } from '../middleware/idempotency';
 import { createAppointmentSchema, appointmentRatingSchema, joinWaitlistSchema } from '../../../shared/schemas';
-import { WaitlistService } from '../services/WaitlistService';
+import { WaitlistService, OfferUnavailableError } from '../services/WaitlistService';
+import User from '../models/User';
 import { buildTriageSummary } from '../services/TriageService';
 import { availabilityForDoctor, availabilityForDoctors, isValidDateString } from '../services/SlotService';
+import { clinicToday } from '../utils/clinicTime';
 import mongoose from 'mongoose';
 import {Appointment} from '../models/Appointment';
 
@@ -286,10 +288,9 @@ router.get('/availability/:doctorId/:date', async (req: Request, res: Response) 
       return res.status(400).json({ success: false, error: 'Invalid date format. Use YYYY-MM-DD' });
     }
 
-    // Check if date is in the past
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (new Date(date + 'T00:00:00.000Z') < today) {
+    // Past on the CLINIC's calendar. The old check mixed the server's local midnight
+    // with a UTC date, so which days counted as "past" depended on where it was deployed.
+    if (date < clinicToday()) {
       return res.status(400).json({ success: false, error: 'Cannot check availability for past dates' });
     }
 
@@ -326,6 +327,50 @@ router.get('/waitlist/mine', authenticate, async (req: Request, res: Response) =
     res.json({ success: true, data: entries });
   } catch (error) {
     res.status(500).json({ success: false, error: 'Failed to fetch waitlist' });
+  }
+});
+
+/**
+ * Claim a held waitlist slot in one step. Books exactly the offered instant; the
+ * patient then pays through the same PaymentProcessor step as any other booking.
+ */
+router.post('/waitlist/:id/claim', [
+  authenticate,
+  body('symptoms').optional().isString().trim().isLength({ max: 1000 }),
+  body('consultationType').optional().isIn(['in-person', 'video', 'phone']),
+], idempotent('waitlist-claim'), async (req: Request, res: Response) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: errors.array().map((e) => e.msg).join(', ') });
+    }
+    const patientId = req.user!._id.toString();
+    const entry = await WaitlistService.getClaimableOffer(req.params.id, patientId);
+    const doctor = await User.findById(entry.doctor).select('specialization consultationFee').lean();
+    if (!doctor) {
+      return res.status(404).json({ success: false, error: 'Doctor no longer available' });
+    }
+
+    const appointment = await AppointmentService.createAppointment({
+      patientId,
+      doctorId: entry.doctor.toString(),
+      appointmentDate: entry.offeredSlot as Date,
+      duration: 30,
+      consultationType: req.body.consultationType || 'video',
+      symptoms: req.body.symptoms || 'Booked from the waitlist',
+      specialization: (doctor as any).specialization,
+      fee: (doctor as any).consultationFee,
+    });
+    res.status(201).json({ success: true, data: appointment, message: 'Slot claimed' });
+  } catch (error) {
+    if (error instanceof OfferUnavailableError) {
+      return res.status(410).json({ success: false, error: error.message });
+    }
+    if (error instanceof SlotTakenError) {
+      return res.status(409).json({ success: false, error: 'That slot is no longer available.' });
+    }
+    console.error('Error claiming waitlist slot:', error);
+    res.status(500).json({ success: false, error: 'Failed to claim the slot' });
   }
 });
 

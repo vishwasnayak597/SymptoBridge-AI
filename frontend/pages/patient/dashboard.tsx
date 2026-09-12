@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useAuthContext } from '../../components/AuthProvider';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import SymptomChecker from '../../components/SymptomChecker';
@@ -14,6 +15,8 @@ import { Appointment } from '../../features/appointments/types';
 import { formatAppointmentDate, getStatusColor } from '../../features/appointments/utils';
 import PrescriptionsList from '../../features/prescriptions/PrescriptionsList';
 import BookingAgentPanel from '../../features/booking-agent/BookingAgentPanel';
+import WaitlistCard from '../../features/waitlist/WaitlistCard';
+import AssistantAccessCard from '../../features/assistant-access/AssistantAccessCard';
 import { usePrescriptions } from '../../features/prescriptions/usePrescriptions';
 import ReportsPanel from '../../features/reports/ReportsPanel';
 import { useReports } from '../../features/reports/useReports';
@@ -102,6 +105,20 @@ const dummyReminders: Reminder[] = [
 const PatientDashboard: React.FC = () => {
   const { user, logout } = useAuthContext();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
+
+  // Deep links like /patient/dashboard?tab=appointments — the waitlist offer
+  // notification uses this. The dashboard used to ignore the query entirely, so
+  // "Claim slot" landed on Overview, minutes into a 15-minute hold.
+  const router = useRouter();
+  useEffect(() => {
+    const tab = router.query.tab;
+    const valid: TabType[] = [
+      'overview', 'symptom-checker', 'find-doctors', 'appointments', 'prescriptions', 'reminders', 'reports',
+    ];
+    if (typeof tab === 'string' && (valid as string[]).includes(tab)) {
+      setActiveTab(tab as TabType);
+    }
+  }, [router.query.tab]);
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
@@ -593,6 +610,8 @@ const PatientDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <AssistantAccessCard />
     </div>
   );
 
@@ -788,11 +807,15 @@ const PatientDashboard: React.FC = () => {
             </>
           )}
           {activeTab === 'appointments' && (
-            <AppointmentsList
-              appointments={appointments}
-              loading={loading}
-              onBookNew={() => setActiveTab('find-doctors')}
-            />
+            <>
+              {/* Renders only when the patient is waiting on something. */}
+              <WaitlistCard onBooked={invalidateAppointments} />
+              <AppointmentsList
+                appointments={appointments}
+                loading={loading}
+                onBookNew={() => setActiveTab('find-doctors')}
+              />
+            </>
           )}
           {activeTab === 'prescriptions' && (
             <PrescriptionsList

@@ -16,6 +16,7 @@
     "@google/generative-ai": "^0.24.1",
     "@google/maps": "^1.1.0",
     "@googlemaps/js-api-loader": "^1.16.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@types/uuid": "^10.0.0",
     "bcryptjs": "^2.4.0",
     "bullmq": "^5.80.6",

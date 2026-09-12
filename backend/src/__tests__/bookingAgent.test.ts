@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import User from '../models/User';
 import { Appointment } from '../models/Appointment';
-import { availabilityForDoctors, dateRange, TIME_SLOTS } from '../services/SlotService';
+import { availabilityForDoctors, dateRange, slotInstant, TIME_SLOTS } from '../services/SlotService';
 import { parseWithRules, slotMatches, editDistance } from '../services/BookingAgentService';
 
 /** A future day that is safely not today, so "past slot" filtering never interferes. */
@@ -54,7 +54,7 @@ describe('SlotService.availabilityForDoctors', () => {
     await Appointment.create({
       patient: patient._id,
       doctor: new Types.ObjectId(busyDoctor),
-      appointmentDate: new Date(`${date}T10:00:00.000Z`),
+      appointmentDate: slotInstant(date, '10:00'),
       duration: 30,
       consultationType: 'video',
       symptoms: 'Chest pain',
@@ -98,7 +98,7 @@ describe('SlotService.availabilityForDoctors', () => {
     await Appointment.create({
       patient: patient._id,
       doctor: new Types.ObjectId(doctorId),
-      appointmentDate: new Date(`${date}T11:00:00.000Z`),
+      appointmentDate: slotInstant(date, '11:00'),
       duration: 30,
       consultationType: 'video',
       symptoms: 'Follow up',

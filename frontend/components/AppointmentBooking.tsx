@@ -15,6 +15,14 @@ import { apiClient } from '../lib/api';
 import { newIdempotencyKey } from '../lib/idempotency';
 import { useAuthContext } from './AuthProvider';
 import PaymentProcessor from './PaymentProcessor';
+import {
+  formatTime,
+  formatClinicTime,
+  formatDateKey,
+  upcomingClinicDays,
+  viewerIsOutsideClinicZone,
+  viewerZoneAbbrev,
+} from '../lib/time';
 
 interface Doctor {
   id: string;
@@ -50,61 +58,18 @@ const APPOINTMENT_TYPES = [
   { id: 'phone', name: 'Phone Consultation', icon: PhoneIcon, price: 0 }
 ];
 
-const TIME_SLOTS = [
-  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
-  '14:00', '14:30', '15:00', '15:30', '16:00', '16:30',
-  '17:00', '17:30'
-];
+/** Placeholder count for the loading skeleton only — the real grid comes from the server. */
+const SKELETON_SLOTS = 12;
 
-// Helper function to generate available dates for appointment booking
-const generateDate = () => {
-  const dates = [];
-  const today = new Date();
-  
-  // Generate next 14 days (2 weeks) for appointment booking
-  for (let i = 0; i < 14; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-    
-    // Format the date for display
-    const options: Intl.DateTimeFormatOptions = { 
-      weekday: 'short', 
-      month: 'short', 
-      day: 'numeric' 
-    };
-    const label = date.toLocaleDateString('en-US', options);
-    
-    // Generate value in YYYY-MM-DD format
-    const value = date.toISOString().split('T')[0];
-    
-    dates.push({
-      value,
-      label,
-      isToday: i === 0
-    });
-  }
-  
-  return dates;
-};
+/** One slot of a clinic day, as the availability endpoint returns it. */
+interface GridSlot {
+  /** Clinic wall-clock label, e.g. "09:00" (IST). */
+  time: string;
+  /** The instant this slot starts. This — never the label — is what gets booked. */
+  iso: string;
+  available: boolean;
+}
 
-// Returns true if the given HH:mm slot on the given YYYY-MM-DD date is in the
-// past relative to now. Only relevant for "today" — future dates are never past.
-const isPastSlot = (dateValue: string, time: string): boolean => {
-  if (!dateValue) return false;
-  const [hours, minutes] = time.split(':').map(Number);
-  const slot = new Date(`${dateValue}T00:00:00`);
-  slot.setHours(hours, minutes, 0, 0);
-  return slot.getTime() <= Date.now();
-};
-
-// Helper function to format time for display
-const formatTimeForDisplay = (time: string): string => {
-  const [hours, minutes] = time.split(':');
-  const hour24 = parseInt(hours);
-  const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
-  const ampm = hour24 >= 12 ? 'PM' : 'AM';
-  return `${hour12.toString().padStart(2, '0')}:${minutes} ${ampm}`;
-};
 
 const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
   doctor,
@@ -123,8 +88,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
   const [showPayment, setShowPayment] = useState(false);
   const [appointmentData, setAppointmentData] = useState<any>(null);
   const [createdAppointmentId, setCreatedAppointmentId] = useState<string>('');
-  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [grid, setGrid] = useState<GridSlot[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsError, setSlotsError] = useState('');
+  const outsideClinicZone = viewerIsOutsideClinicZone();
 
   // Family accounts: who this appointment is for ('self' or a dependent index).
   const { user, refreshUser } = useAuthContext();
@@ -171,14 +138,18 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
     
     try {
       setSlotsLoading(true);
+      setSlotsError('');
       const response = await apiClient.get(`/appointments/availability/${doctor.id}/${date}`);
-      
+
       if (response.data.success) {
-        setAvailableSlots(response.data.data.availableSlots);
+        setGrid(response.data.data.grid ?? []);
       }
     } catch (error) {
       console.error('Error fetching available slots:', error);
-      setAvailableSlots(TIME_SLOTS); // Fallback to all slots
+      // No fallback grid: the old fallback showed every slot as free — including
+      // booked ones — and without the server there is no instant to book with.
+      setGrid([]);
+      setSlotsError('Could not load times for this day. Please try again.');
     } finally {
       setSlotsLoading(false);
     }
@@ -223,15 +194,21 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
       return;
     }
 
+    // Book the instant the server attached to this slot. Building it here with
+    // `new Date(`${date}T${time}`)` used the browser's timezone — the bug that put
+    // this form 5h30m away from the availability engine.
+    const slot = grid.find((s) => s.time === selectedTime);
+    if (!slot) {
+      setError('That time is no longer available. Please pick another.');
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // Create appointment date
-      const appointmentDate = new Date(`${selectedDate}T${selectedTime}`);
-      
       const appointmentPayload = {
         doctorId: doctor.id,
-        appointmentDate: appointmentDate.toISOString(),
+        appointmentDate: slot.iso,
         duration: 30,
         consultationType: selectedType,
         symptoms: symptoms.trim(),
@@ -318,7 +295,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
 
   if (!isOpen) return null;
 
-  const dates = generateDate();
+  // Clinic days: slots belong to the clinic's calendar, not the viewer's.
+  const dates = upcomingClinicDays(14);
+  const selectedSlot = grid.find((s) => s.time === selectedTime);
+  const availableCount = grid.filter((s) => s.available && new Date(s.iso).getTime() > Date.now()).length;
   const totalFee = doctor.consultationFee;
 
   return (
@@ -415,10 +395,16 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Select Time {selectedDate && (
                     <span className="text-sm text-gray-500">
-                      (Available slots for {new Date(selectedDate).toLocaleDateString()})
+                      (Available slots for {formatDateKey(selectedDate)})
                     </span>
                   )}
                 </label>
+                {selectedDate && outsideClinicZone && (
+                  <p className="text-xs text-gray-500 -mt-2 mb-3">
+                    Times are shown in your time zone ({viewerZoneAbbrev()}). The clinic&rsquo;s own
+                    time is under each slot.
+                  </p>
+                )}
                 {!selectedDate ? (
                   <div className="p-4 text-center text-gray-500 border-2 border-dashed border-gray-200 rounded-lg">
                     Please select a date first
@@ -427,19 +413,19 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {slotsLoading ? (
                       // Loading state
-                      TIME_SLOTS.map((time) => (
+                      Array.from({ length: SKELETON_SLOTS }, (_, i) => (
                         <div
-                          key={time}
+                          key={i}
                           className="p-2 text-sm border rounded-lg text-center text-gray-400 bg-gray-50 animate-pulse"
                         >
                           Loading...
                         </div>
                       ))
                     ) : (
-                      // Show all time slots, but disable unavailable ones
-                      TIME_SLOTS.map((time) => {
-                        const isPast = isPastSlot(selectedDate, time);
-                        const isAvailable = availableSlots.includes(time) && !isPast;
+                      // Show the whole day, but disable taken and past slots
+                      grid.map(({ time, iso, available }) => {
+                        const isPast = new Date(iso).getTime() <= Date.now();
+                        const isAvailable = available && !isPast;
                         const isSelected = selectedTime === time;
 
                         return (
@@ -457,7 +443,12 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                             }`}
                             title={isAvailable ? 'Available' : isPast ? 'Time has already passed' : 'Already booked'}
                           >
-                            {formatTimeForDisplay(time)}
+                            {formatTime(iso)}
+                            {outsideClinicZone && (
+                              <span className="block text-[10px] text-gray-400">
+                                {formatClinicTime(iso)} clinic
+                              </span>
+                            )}
                             {!isAvailable && (
                               <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="w-full h-0.5 bg-red-400 transform rotate-12"></div>
@@ -469,7 +460,10 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                     )}
                   </div>
                 )}
-                {selectedDate && !slotsLoading && availableSlots.length === 0 && (
+                {selectedDate && !slotsLoading && slotsError && (
+                  <p className="mt-2 text-sm text-red-700">{slotsError}</p>
+                )}
+                {selectedDate && !slotsLoading && !slotsError && availableCount === 0 && (
                   <div className="mt-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-center">
                     <p className="font-medium">No available slots</p>
                     <p className="text-sm mb-2">Pick another date — or join the waitlist and we&rsquo;ll notify you if a slot frees up.</p>
@@ -630,7 +624,8 @@ const AppointmentBooking: React.FC<AppointmentBookingProps> = ({
                 <div className="flex justify-between">
                   <span className="text-gray-600">Date & Time:</span>
                   <span className="font-medium">
-                    {selectedDate} at {formatTimeForDisplay(selectedTime)}
+                    {selectedDate && formatDateKey(selectedDate)} at{' '}
+                    {selectedSlot ? formatTime(selectedSlot.iso) : selectedTime}
                   </span>
                 </div>
                 <div className="flex justify-between">

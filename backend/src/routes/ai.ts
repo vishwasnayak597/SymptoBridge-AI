@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { AIService } from '../services/AIService';
 import { MCPService } from '../services/MCPService';
 import { startTriage, answerTriage, getTriageMeta } from '../services/TriageService';
-import { runBookingAgent, confirmProposal, SlotTakenError } from '../services/BookingAgentService';
+import { runBookingAgent, confirmProposal, peekProposal, SlotTakenError } from '../services/BookingAgentService';
 
 import { authenticate } from '../middleware/auth';
 import { idempotent } from '../middleware/idempotency';
@@ -362,6 +362,21 @@ router.post('/booking-agent', [
     console.error('Booking agent failed:', error);
     res.status(500).json({ success: false, error: 'Could not search for appointments right now' });
   }
+});
+
+/**
+ * GET /api/ai/booking-agent/proposals/:id
+ * Show one pending proposal to its owner without consuming it — the landing point for
+ * proposals an external assistant made over MCP. Confirming still goes through
+ * /booking-agent/confirm, from this UI.
+ */
+router.get('/booking-agent/proposals/:id', authenticate, async (req: Request, res: Response) => {
+  const proposal = await peekProposal(req.params.id, req.user!._id.toString());
+  if (!proposal) {
+    return res.status(404).json({ success: false, error: 'This option has expired or was already used.' });
+  }
+  const { patientId, ...visible } = proposal;
+  res.json({ success: true, data: { proposalId: req.params.id, ...visible } });
 });
 
 /**

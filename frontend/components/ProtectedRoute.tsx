@@ -27,10 +27,20 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const router = useRouter();
 
   useEffect(() => {
-    if (isLoading) return;
+    // Also wait for the router: on a static export the query string isn't parsed until
+    // hydration, and redirecting before then would lose it.
+    if (isLoading || !router.isReady) return;
 
     if (!isAuthenticated) {
-      router.push(redirectTo);
+      // Carry the page they were heading to (query included), so a deep link like a
+      // booking suggestion or a waitlist offer survives the login. The login page
+      // only follows it if it's a safe same-site path — see lib/redirect.ts.
+      const here = router.asPath;
+      const target =
+        redirectTo === '/auth/login' && here && !here.startsWith('/auth/')
+          ? `${redirectTo}?redirect=${encodeURIComponent(here)}`
+          : redirectTo;
+      router.push(target);
       return;
     }
 
@@ -57,6 +67,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     requireDoctorVerification,
     redirectTo,
     router,
+    router.isReady,
   ]);
 
   if (isLoading) {

@@ -20,6 +20,7 @@ import { KeepAliveService } from './services/KeepAliveService';
 import { SocketService } from './services/SocketService';
 import { startEventConsumers, stopEventConsumers } from './services/EventBus';
 import { startJobWorkers, stopJobWorkers } from './services/JobQueueService';
+import { WaitlistService } from './services/WaitlistService';
 import { getRedis, closeRedis } from './utils/redis';
 import { requestId, httpMetrics, metricsHandler, vitalsHandler } from './middleware/observability';
 
@@ -148,6 +149,8 @@ async function startServer() {
       const reportRoutes = await import('./routes/reports');
       const adminSpecializationRoutes = await import('./routes/admin-specializations');
       const auditRoutes = await import('./routes/audit');
+      const tokenRoutes = await import('./routes/tokens');
+      const { mcpRouter } = await import('./mcp/server');
 
       app.use('/api/auth', authRoutes.default);
       app.use('/api/ai', aiRoutes.default);
@@ -161,6 +164,9 @@ async function startServer() {
       app.use('/api/reports', reportRoutes.default);
       app.use('/api/admin', adminSpecializationRoutes.default);
       app.use('/api/audit', auditRoutes.default);
+      app.use('/api/tokens', tokenRoutes.default);
+      // MCP endpoint for external AI assistants (personal access tokens only).
+      app.use('/api/mcp', mcpRouter);
     } catch (routeError) {
       console.error('❌ Error loading routes:', routeError);
       throw routeError;
@@ -192,11 +198,13 @@ async function startServer() {
         }
       }));
       
-      // Handle SPA routing - serve index.html for all non-API routes
-      app.get('*', (req, res) => {
-        if (!req.path.startsWith('/api/')) {
-          res.sendFile(path.join(frontendStaticPath, 'index.html'));
-        }
+      // Handle SPA routing - serve index.html for all non-API routes. An unknown
+      // /api/ route must fall through to the JSON 404 below: this handler used to
+      // neither respond nor call next() for those, so the request hung until the
+      // client gave up.
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        res.sendFile(path.join(frontendStaticPath, 'index.html'));
       });
     }
     
@@ -213,6 +221,15 @@ async function startServer() {
 
     // Start the BullMQ job queue + worker (reminders, waitlist expiry)
     startJobWorkers();
+
+    // Safety net for waitlist holds: without Redis, the 15-minute expiry is an
+    // in-process timer that a restart loses. The sweep keeps the chain moving.
+    // unref() so it never keeps the process alive on shutdown.
+    setInterval(() => {
+      WaitlistService.sweepExpiredOffers().catch((err) =>
+        logger.error('Waitlist sweep failed', { message: err.message })
+      );
+    }, 60 * 1000).unref();
 
     await new Promise<void>((resolve, reject) => {
       const server = httpServer.listen(PORT, () => {

@@ -3,6 +3,7 @@ import User from '../models/User';
 import { Appointment } from '../models/Appointment';
 import { runBookingAgent, confirmProposal } from '../services/BookingAgentService';
 import { stopJobWorkers } from '../services/JobQueueService';
+import { slotInstant } from '../services/SlotService';
 
 // Booking an appointment schedules T-24h/T-1h reminders. With no Redis those are
 // in-process setTimeouts, which keep the event loop alive and stop Jest exiting.
@@ -120,7 +121,7 @@ describe('runBookingAgent', () => {
       slots.map((slot) => ({
         patient: new Types.ObjectId(patientId),
         doctor: new Types.ObjectId(cheapId),
-        appointmentDate: new Date(`${date}T${slot}:00.000Z`),
+        appointmentDate: slotInstant(date, slot),
         duration: 30,
         consultationType: 'video',
         symptoms: 'Existing booking',

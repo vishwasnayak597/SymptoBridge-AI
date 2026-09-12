@@ -5,8 +5,9 @@ import { publishEvent } from './EventBus';
 import { SocketService } from './SocketService';
 import logger from '../utils/logger';
 import { loadDoctorsCached, toDoctorSummary, DoctorSummary } from './DoctorDirectoryService';
-import { availabilityForDoctors } from './SlotService';
+import { availabilityForDoctors, slotInstant } from './SlotService';
 import { AppointmentService, SlotTakenError } from './AppointmentService';
+import { clinicToday, addDaysToKey, weekdayOfKey } from '../utils/clinicTime';
 
 /**
  * Booking agent: turns "find a cardiologist this week under ₹800" into a handful of
@@ -123,14 +124,14 @@ interface RunOptions {
 
 // ---------------------------------------------------------------- date helpers
 
+// "Today", "tomorrow" and "this week" are the clinic's calendar. These used the UTC
+// date, so between midnight and 5:30 am IST "today" meant yesterday.
 function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return clinicToday();
 }
 
 function addDays(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysToKey(date, days);
 }
 
 /**
@@ -138,8 +139,9 @@ function addDays(date: string, days: number): string {
  * today, which would leave a one-day search; treat that as the week ahead instead.
  */
 function endOfWeek(): string {
-  const daysToSunday = (7 - new Date().getUTCDay()) % 7;
-  return addDays(todayISO(), daysToSunday === 0 ? 6 : daysToSunday);
+  const today = todayISO();
+  const daysToSunday = (7 - weekdayOfKey(today)) % 7;
+  return addDays(today, daysToSunday === 0 ? 6 : daysToSunday);
 }
 
 // ---------------------------------------------------------------- read tools
@@ -733,7 +735,9 @@ function rankProposals(
     }
     if (!earliest) continue;
 
-    const slotISO = `${earliest.date}T${earliest.time}:00.000Z`;
+    // The label is clinic time; slotInstant is the one conversion. Building
+    // `T17:00:00.000Z` here proposed 10:30 pm IST for a "5 pm" request.
+    const slotISO = slotInstant(earliest.date, earliest.time).toISOString();
     const hoursAway = (new Date(slotISO).getTime() - Date.now()) / 3_600_000;
 
     // Sooner is better; cheaper is better; better-rated is better. Urgent sessions
@@ -772,7 +776,7 @@ function rankProposals(
 
 // ---------------------------------------------------------------- proposal store
 
-interface StoredProposal {
+export interface StoredProposal {
   patientId: string;
   doctorId: string;
   slotISO: string;
@@ -791,6 +795,25 @@ async function storeProposal(id: string, value: StoredProposal): Promise<void> {
     return;
   }
   memoryProposals.set(id, { value, expiresAt: Date.now() + PROPOSAL_TTL_SECONDS * 1000 });
+}
+
+/**
+ * Reads a proposal WITHOUT consuming it, for its owner only. This is how a proposal
+ * made by an external assistant over MCP reaches SymptoBridge's own UI: the assistant
+ * hands the patient a link, the page shows the proposal, and only the patient's click
+ * (confirmProposal) books it.
+ */
+export async function peekProposal(id: string, patientId: string): Promise<StoredProposal | null> {
+  const redis = getRedis();
+  let value: StoredProposal | null = null;
+  if (redis) {
+    const raw = await redis.get(`booking:proposal:${id}`);
+    value = raw ? (JSON.parse(raw) as StoredProposal) : null;
+  } else {
+    const hit = memoryProposals.get(id);
+    value = hit && hit.expiresAt > Date.now() ? hit.value : null;
+  }
+  return value && value.patientId === patientId ? value : null;
 }
 
 /** Reads and CONSUMES a proposal — single use, so a double-click can't double-book. */

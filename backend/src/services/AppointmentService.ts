@@ -6,10 +6,15 @@ import { VideoCallService } from './VideoCallService';
 import { publishEvent } from './EventBus';
 import { scheduleAppointmentReminders, cancelAppointmentReminders } from './JobQueueService';
 import { WaitlistService } from './WaitlistService';
+import { clinicDateKey } from '../utils/clinicTime';
 
-/** Calendar day of a date as YYYY-MM-DD (waitlist entries key on this). */
+/**
+ * Clinic calendar day of an instant as YYYY-MM-DD (waitlist entries key on this).
+ * Was the UTC day, so a 9 am IST booking (03:30Z) keyed correctly but anything
+ * before 5:30 am IST landed on the previous day's waitlist.
+ */
 function dayOf(date: Date): string {
-  return new Date(date).toISOString().slice(0, 10);
+  return clinicDateKey(new Date(date));
 }
 
 export interface CreateAppointmentRequest {
@@ -124,7 +129,8 @@ export class AppointmentService {
     await scheduleAppointmentReminders(appointment._id.toString(), appointmentDate);
 
     // If this patient was waiting for this doctor/day, their wait is over.
-    await WaitlistService.markFulfilled(patientId, doctorId, dayOf(appointmentDate)).catch(() => {});
+    // Passing the booked time lets a hold on a DIFFERENT slot be handed on, not dropped.
+    await WaitlistService.markFulfilled(patientId, doctorId, dayOf(appointmentDate), appointmentDate).catch(() => {});
 
     await NotificationService.createNotification({
       recipient: doctorId,
@@ -375,9 +381,12 @@ export class AppointmentService {
 
     // Drop the pending reminder jobs and offer the freed slot to the waitlist.
     await cancelAppointmentReminders(appointmentId);
+    // Offer the exact freed slot, so the next patient gets a held time rather than
+    // "something opened on the 14th".
     await WaitlistService.offerNext(
       appointment.doctor._id.toString(),
-      dayOf(appointment.appointmentDate)
+      dayOf(appointment.appointmentDate),
+      new Date(appointment.appointmentDate)
     ).catch(() => {});
 
     const isDoctor = appointment.doctor._id.toString() === userId;
@@ -651,6 +660,23 @@ export class AppointmentService {
     });
 
     if (clash) {
+      throw new SlotTakenError();
+    }
+
+    // A slot held for a waitlisted patient is theirs until the hold lapses. This is
+    // the enforcement point: availability merely hides the slot, but the booking
+    // form, the booking agent and the raw API all end up here.
+    const holds = await WaitlistService.activeHolds(
+      [doctorId],
+      new Date(newStart),
+      new Date(newEnd)
+    );
+    const heldForSomeoneElse = holds.some((hold) => {
+      const start = new Date(hold.offeredSlot as Date).getTime();
+      const overlaps = start < newEnd && start + 30 * 60 * 1000 > newStart;
+      return overlaps && String(hold.patient) !== patientId;
+    });
+    if (heldForSomeoneElse) {
       throw new SlotTakenError();
     }
   }

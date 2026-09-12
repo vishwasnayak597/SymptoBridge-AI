@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { EyeIcon, EyeSlashIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 import { useAuthContext } from '../../components/AuthProvider';
+import { safeRedirectPath, ROLE_HOME } from '../../lib/redirect';
 // Same runtime schema the API validates against (shared/schemas.ts): the form
 // can never accept input the server would reject. The TS type is declared
 // explicitly because zod's z.infer needs strict mode, which this codebase
@@ -35,27 +36,19 @@ const LoginPage: React.FC = () => {
   });
 
   useEffect(() => {
+    // Wait for the query: on a static export it's empty until hydration, and acting
+    // before then would drop ?redirect= and send everyone to their dashboard.
+    if (!router.isReady) return;
     if (isAuthenticated && user && !router.asPath.includes('/video-call/')) {
-      const redirectPath = router.query.redirect as string;
-      if (redirectPath) {
-        router.push(redirectPath);
-      } else {
-        switch (user.role) {
-          case 'patient':
-            router.push('/patient/dashboard');
-            break;
-          case 'doctor':
-            router.push('/doctor/dashboard');
-            break;
-          case 'admin':
-            router.push('/admin/dashboard');
-            break;
-          default:
-            router.push('/');
-        }
-      }
+      // Only a same-site path inside the user's own area is followed — the raw value
+      // used to be pushed as-is, which made this an open redirect.
+      const target =
+        safeRedirectPath(router.query.redirect, user.role) ??
+        ROLE_HOME[user.role as keyof typeof ROLE_HOME] ??
+        '/';
+      router.push(target);
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, router, router.isReady, router.query.redirect]);
 
   const onSubmit = async (data: LoginFormData): Promise<void> => {
     try {
