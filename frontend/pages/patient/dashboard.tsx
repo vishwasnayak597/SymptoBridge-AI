@@ -16,7 +16,6 @@ import { formatAppointmentDate, getStatusColor } from '../../features/appointmen
 import PrescriptionsList from '../../features/prescriptions/PrescriptionsList';
 import BookingAgentPanel from '../../features/booking-agent/BookingAgentPanel';
 import WaitlistCard from '../../features/waitlist/WaitlistCard';
-import AssistantAccessCard from '../../features/assistant-access/AssistantAccessCard';
 import { usePrescriptions } from '../../features/prescriptions/usePrescriptions';
 import ReportsPanel from '../../features/reports/ReportsPanel';
 import { useReports } from '../../features/reports/useReports';
@@ -610,8 +609,6 @@ const PatientDashboard: React.FC = () => {
           </div>
         </div>
       </div>
-
-      <AssistantAccessCard />
     </div>
   );
 

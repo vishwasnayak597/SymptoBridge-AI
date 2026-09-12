@@ -8,7 +8,7 @@ import DoctorScheduleCalendar from '../../components/DoctorScheduleCalendar';
 import { apiClient } from '../../lib/api';
 import { useUnreadNotificationCount, useSetUnreadCount } from '../../hooks/useNotifications';
 import { doctorDisplayName } from '../../features/prescriptions/usePrescriptions';
-import { conditionDisplayName } from '../../lib/conditionNames';
+import { conditionDisplayName, findingText } from '../../lib/conditionNames';
 import {
   UsersIcon,
   CalendarDaysIcon,
@@ -902,38 +902,59 @@ const DoctorDashboard: React.FC = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1.5">Likely conditions</p>
-                            <div className="space-y-1.5">
-                              {appointment.triageSummary.conditions.slice(0, 4).map((c) => (
-                                <div key={c.disease}>
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-gray-800">{conditionDisplayName(c.disease)}</span>
-                                    <span className="tabular-nums text-gray-500">{Math.round(c.prob * 100)}%</span>
-                                  </div>
-                                  <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                                    <div
-                                      className="h-full rounded-full bg-indigo-500"
-                                      style={{ width: `${Math.max(3, Math.round(c.prob * 100))}%` }}
-                                    />
-                                  </div>
+                            {(() => {
+                              // Conditions under 1% were drawn as "0%" rows with a sliver
+                              // of bar — noise that reads as a broken chart. Show the ones
+                              // that carry weight (always at least the top one) and count
+                              // the rest.
+                              const top = appointment.triageSummary.conditions.slice(0, 4);
+                              const shown = top.filter((c, i) => i === 0 || c.prob >= 0.01);
+                              const hidden = top.length - shown.length;
+                              return (
+                                <div className="space-y-1.5">
+                                  {shown.map((c) => (
+                                    <div key={c.disease}>
+                                      <div className="flex justify-between text-sm">
+                                        <span className="text-gray-800">{conditionDisplayName(c.disease)}</span>
+                                        {/* A probabilistic model is never certain; ">99%"
+                                            instead of a rounded "100%", matching the
+                                            patient's result banner. */}
+                                        <span className="tabular-nums text-gray-500">
+                                          {c.prob >= 0.995 ? '>99%' : `${Math.round(c.prob * 100)}%`}
+                                        </span>
+                                      </div>
+                                      <div className="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                                        <div
+                                          className="h-full rounded-full bg-indigo-500"
+                                          style={{ width: `${Math.max(3, Math.round(c.prob * 100))}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
+                                  {hidden > 0 && (
+                                    <p className="text-xs text-gray-500">
+                                      {hidden} other {hidden === 1 ? 'condition' : 'conditions'} under 1%
+                                    </p>
+                                  )}
                                 </div>
-                              ))}
-                            </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="space-y-3">
                             {appointment.triageSummary.drivingSymptoms.length > 0 && (
                               <div>
-                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1.5">Reported symptoms</p>
-                                <div className="flex flex-wrap gap-1.5">
+                                <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1.5">Patient answered yes to</p>
+                                {/* The questions verbatim, not model codes: ids here are
+                                    DDXPlus evidence codes, which rendered as "E 91". */}
+                                <ul className="space-y-1">
                                   {appointment.triageSummary.drivingSymptoms.map((s) => (
-                                    <span
-                                      key={s.id}
-                                      className="rounded-full bg-white border border-indigo-200 px-2 py-0.5 text-xs text-indigo-800 capitalize"
-                                    >
-                                      {s.id.replace(/_/g, ' ')}
-                                    </span>
+                                    <li key={s.id} className="flex items-start gap-2 text-sm text-gray-800">
+                                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" aria-hidden="true" />
+                                      {findingText(s)}
+                                    </li>
                                   ))}
-                                </div>
+                                </ul>
                               </div>
                             )}
                             {appointment.triageSummary.recommendedSpecializations.length > 0 && (

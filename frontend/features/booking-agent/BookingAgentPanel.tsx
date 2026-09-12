@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/router';
 import {
   SparklesIcon,
   ArrowPathIcon,
@@ -137,44 +136,6 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
   const [dropped, setDropped] = useState<Set<DroppableKey>>(new Set());
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // A proposal an external AI assistant made over MCP arrives as ?proposal=<id>.
-  // The assistant can't book; this page is where the patient does.
-  const router = useRouter();
-  const [linked, setLinked] = useState<Proposal | null>(null);
-  const [linkedError, setLinkedError] = useState('');
-  useEffect(() => {
-    const id = router.query.proposal;
-    if (typeof id !== 'string' || !id) return;
-    apiClient
-      .get(`/ai/booking-agent/proposals/${encodeURIComponent(id)}`)
-      .then((response) => {
-        const p = response.data.data;
-        setLinked({
-          proposalId: p.proposalId,
-          doctorId: p.doctorId,
-          doctorName: p.doctorName,
-          specialization: p.specialization,
-          fee: p.fee,
-          rating: 0,
-          distanceKm: null,
-          slotISO: p.slotISO,
-          date: '',
-          time: '',
-          reason: 'Suggested by your AI assistant',
-        });
-      })
-      .catch((err) =>
-        setLinkedError(err?.response?.data?.error || 'That suggestion has expired. Search again below.')
-      );
-  }, [router.query.proposal]);
-
-  /** Drop ?proposal from the URL once it's been used, so a refresh doesn't resurrect it. */
-  const clearLinked = () => {
-    setLinked(null);
-    const { proposal, ...rest } = router.query;
-    router.replace({ pathname: router.pathname, query: rest }, undefined, { shallow: true });
-  };
-
   // Steps stream over the socket while the tools run — a 5-15s wait with no feedback
   // reads as a hang.
   useEffect(() => {
@@ -191,7 +152,6 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
     if (!text.trim() || running) return;
     setRunning(true);
     setError('');
-    setLinkedError('');
     setBooked(null);
     setResult(null);
     setLiveSteps([]);
@@ -230,24 +190,9 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
         proposal,
       });
       setResult(null);
-      if (linked?.proposalId === proposal.proposalId) clearLinked();
       onBooked?.();
     } catch (err: any) {
       const message = err?.response?.data?.error || 'Could not confirm that booking.';
-
-      // A suggestion from the AI assistant is single-use and is consumed before the
-      // booking is attempted, so after any failure the card is dead. There's also no
-      // search text to re-run from a deep link — so retire the card and say what to do,
-      // rather than leaving a "Book & pay" button that can only fail again.
-      if (linked?.proposalId === proposal.proposalId) {
-        clearLinked();
-        setLinkedError(
-          err?.response?.status === 409
-            ? 'That time was just taken by someone else. Search for another slot below, or ask your assistant again.'
-            : `${message} Search for a slot below, or ask your assistant again.`
-        );
-        return;
-      }
 
       // 409 means someone took the slot between proposal and click — re-run so the
       // patient gets fresh options instead of a dead error.
@@ -308,42 +253,6 @@ export default function BookingAgentPanel({ onBooked }: BookingAgentPanelProps) 
           </p>
         </div>
       </div>
-
-      {linked && !awaitingPayment && !booked && (
-        <div className="mb-4 rounded-xl border border-ember-200 bg-ember-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-ember-700 mb-2">
-            Suggested by your AI assistant
-          </p>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
-              <p className="font-bold text-stone-800">{linked.doctorName}</p>
-              <p className="text-sm text-stone-500">{linked.specialization}</p>
-              <p className="text-sm text-stone-700 mt-1 flex items-center gap-1.5">
-                <CalendarDaysIcon className="h-4 w-4 text-ember-600" />
-                {formatSlot(linked)}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <button onClick={clearLinked} className="text-sm text-stone-600 hover:text-stone-900">
-                Dismiss
-              </button>
-              <button
-                onClick={() => confirm(linked)}
-                disabled={confirming !== null}
-                className="btn-primary disabled:opacity-50"
-              >
-                {confirming === linked.proposalId ? 'Holding…' : `Book & pay · ₹${linked.fee}`}
-              </button>
-            </div>
-          </div>
-          <p className="text-xs text-stone-500 mt-2">
-            Your assistant can suggest, but nothing is booked until you confirm here.
-          </p>
-        </div>
-      )}
-      {linkedError && !linked && (
-        <p className="mb-4 text-sm text-stone-600">{linkedError}</p>
-      )}
 
       <div className="flex flex-col sm:flex-row gap-2">
         <input

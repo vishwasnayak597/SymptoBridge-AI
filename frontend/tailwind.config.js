@@ -25,9 +25,15 @@ const stone = {
 };
 
 module.exports = {
+  // Every folder that contains className strings must be listed here: Tailwind only
+  // generates CSS for classes it finds in these files. `features/` was missing, so
+  // classes used only by feature components (gap-x-6, rounded-r-xl, border-l-[3px]…)
+  // were silently stripped from the production CSS — e.g. the prescription card's
+  // "Once at nightDuration" with no gap between the two fields.
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './features/**/*.{js,ts,jsx,tsx,mdx}',
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './styles/**/*.css',
   ],

@@ -149,8 +149,6 @@ async function startServer() {
       const reportRoutes = await import('./routes/reports');
       const adminSpecializationRoutes = await import('./routes/admin-specializations');
       const auditRoutes = await import('./routes/audit');
-      const tokenRoutes = await import('./routes/tokens');
-      const { mcpRouter } = await import('./mcp/server');
 
       app.use('/api/auth', authRoutes.default);
       app.use('/api/ai', aiRoutes.default);
@@ -164,9 +162,6 @@ async function startServer() {
       app.use('/api/reports', reportRoutes.default);
       app.use('/api/admin', adminSpecializationRoutes.default);
       app.use('/api/audit', auditRoutes.default);
-      app.use('/api/tokens', tokenRoutes.default);
-      // MCP endpoint for external AI assistants (personal access tokens only).
-      app.use('/api/mcp', mcpRouter);
     } catch (routeError) {
       console.error('❌ Error loading routes:', routeError);
       throw routeError;

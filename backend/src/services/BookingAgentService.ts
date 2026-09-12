@@ -776,7 +776,7 @@ function rankProposals(
 
 // ---------------------------------------------------------------- proposal store
 
-export interface StoredProposal {
+interface StoredProposal {
   patientId: string;
   doctorId: string;
   slotISO: string;
@@ -795,25 +795,6 @@ async function storeProposal(id: string, value: StoredProposal): Promise<void> {
     return;
   }
   memoryProposals.set(id, { value, expiresAt: Date.now() + PROPOSAL_TTL_SECONDS * 1000 });
-}
-
-/**
- * Reads a proposal WITHOUT consuming it, for its owner only. This is how a proposal
- * made by an external assistant over MCP reaches SymptoBridge's own UI: the assistant
- * hands the patient a link, the page shows the proposal, and only the patient's click
- * (confirmProposal) books it.
- */
-export async function peekProposal(id: string, patientId: string): Promise<StoredProposal | null> {
-  const redis = getRedis();
-  let value: StoredProposal | null = null;
-  if (redis) {
-    const raw = await redis.get(`booking:proposal:${id}`);
-    value = raw ? (JSON.parse(raw) as StoredProposal) : null;
-  } else {
-    const hit = memoryProposals.get(id);
-    value = hit && hit.expiresAt > Date.now() ? hit.value : null;
-  }
-  return value && value.patientId === patientId ? value : null;
 }
 
 /** Reads and CONSUMES a proposal — single use, so a double-click can't double-book. */
